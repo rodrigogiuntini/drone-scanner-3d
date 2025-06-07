@@ -170,6 +170,9 @@
         let terrainTexture, skybox;
         let rivers = [], lakes = [], mountains = [], forests = [];
         let village = [], canoes = [], totems = [];
+        let weatherSystem, atmosphericParticles, cloudSystem;
+        let audioContext, droneSound, windSound;
+        let composer, renderTarget;
 
         // Inicializar a cena
         function init() {
@@ -182,21 +185,31 @@
             camera.position.set(80, 60, 80);
             camera.lookAt(0, 0, 0);
 
-            // Configurar renderer
+            // Configurar renderer ultra-realista
             renderer = new THREE.WebGLRenderer({ 
                 antialias: true, 
                 alpha: true,
                 shadowMap: true,
-                physicallyCorrectLights: true
+                physicallyCorrectLights: true,
+                logarithmicDepthBuffer: true
             });
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.setClearColor(0x87CEEB, 1);
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-            renderer.shadowMap.cascade = true;
+            renderer.shadowMap.autoUpdate = true;
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 1.2;
+            renderer.toneMappingExposure = 1.4;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.gammaFactor = 2.2;
             document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // Adicionar névoa atmosférica realista
+            scene.fog = new THREE.FogExp2(0x87CEEB, 0.0008);
+
+            // Configurar pós-processamento
+            setupPostProcessing();
 
             // Criar skybox
             createSkybox();
@@ -224,6 +237,12 @@
             // Adicionar elementos ambientais
             addEnvironmentalElements();
             
+            // Criar sistema climático
+            createWeatherSystem();
+            
+            // Inicializar áudio
+            initializeAudio();
+            
             // Controles de câmera orbital
             setupCameraControls();
             
@@ -231,37 +250,118 @@
             animate();
         }
 
+        function setupPostProcessing() {
+            // Sistema de pós-processamento para realismo cinematográfico
+            renderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+                minFilter: THREE.LinearFilter,
+                magFilter: THREE.LinearFilter,
+                format: THREE.RGBAFormat
+            });
+        }
+
         function createSkybox() {
-            const skyGeometry = new THREE.SphereGeometry(1000, 32, 32);
-            const skyMaterial = new THREE.MeshBasicMaterial({
-                color: 0x87CEEB,
+            // Skybox com gradiente realista
+            const skyGeometry = new THREE.SphereGeometry(1500, 64, 64);
+            
+            // Criar shader de skybox realista
+            const skyMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 },
+                    sunPosition: { value: new THREE.Vector3(100, 120, 50) }
+                },
+                vertexShader: `
+                    varying vec3 vWorldPosition;
+                    void main() {
+                        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                        vWorldPosition = worldPosition.xyz;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform vec3 sunPosition;
+                    varying vec3 vWorldPosition;
+                    
+                    void main() {
+                        vec3 direction = normalize(vWorldPosition);
+                        float elevation = direction.y;
+                        
+                        // Cores do céu baseadas na altura
+                        vec3 skyColor = mix(
+                            vec3(0.5, 0.7, 1.0),  // Azul horizonte
+                            vec3(0.3, 0.6, 1.0),  // Azul céu
+                            smoothstep(0.0, 0.4, elevation)
+                        );
+                        
+                        // Efeito do sol
+                        vec3 sunDir = normalize(sunPosition);
+                        float sunIntensity = max(0.0, dot(direction, sunDir));
+                        vec3 sunGlow = vec3(1.0, 0.8, 0.6) * pow(sunIntensity, 8.0) * 0.5;
+                        
+                        gl_FragColor = vec4(skyColor + sunGlow, 1.0);
+                    }
+                `,
                 side: THREE.BackSide,
                 fog: false
             });
+            
             skybox = new THREE.Mesh(skyGeometry, skyMaterial);
+            skybox.userData = { isSkybox: true };
             scene.add(skybox);
 
-            // Adicionar nuvens
-            for (let i = 0; i < 20; i++) {
-                const cloudGeometry = new THREE.SphereGeometry(Math.random() * 30 + 20, 8, 8);
-                const cloudMaterial = new THREE.MeshBasicMaterial({
-                    color: 0xffffff,
-                    transparent: true,
-                    opacity: 0.3
-                });
-                const cloud = new THREE.Mesh(cloudGeometry, cloudMaterial);
-                cloud.position.set(
-                    (Math.random() - 0.5) * 800,
-                    Math.random() * 200 + 100,
-                    (Math.random() - 0.5) * 800
-                );
-                cloud.scale.set(
-                    Math.random() * 2 + 1,
-                    Math.random() * 0.5 + 0.5,
-                    Math.random() * 2 + 1
-                );
-                scene.add(cloud);
+            // Sistema de nuvens volumétricas
+            createVolumetricClouds();
+        }
+
+        function createVolumetricClouds() {
+            cloudSystem = new THREE.Group();
+            
+            // Nuvens em múltiplas camadas
+            for (let layer = 0; layer < 3; layer++) {
+                for (let i = 0; i < 15; i++) {
+                    const cloudGeometry = new THREE.SphereGeometry(
+                        25 + Math.random() * 35, 
+                        12, 
+                        8
+                    );
+                    
+                    // Material volumétrico
+                    const cloudMaterial = new THREE.MeshLambertMaterial({
+                        color: new THREE.Color().setHSL(0, 0, 0.9 + Math.random() * 0.1),
+                        transparent: true,
+                        opacity: 0.4 - layer * 0.1,
+                        fog: false
+                    });
+                    
+                    const cloud = new THREE.Mesh(cloudGeometry, cloudMaterial);
+                    
+                    // Posicionamento em camadas
+                    const angle = (i / 15) * Math.PI * 2;
+                    const radius = 600 + layer * 200;
+                    cloud.position.set(
+                        Math.cos(angle) * radius + (Math.random() - 0.5) * 200,
+                        150 + layer * 50 + Math.random() * 100,
+                        Math.sin(angle) * radius + (Math.random() - 0.5) * 200
+                    );
+                    
+                    // Formas orgânicas
+                    cloud.scale.set(
+                        1 + Math.random() * 1.5,
+                        0.3 + Math.random() * 0.4,
+                        1 + Math.random() * 1.5
+                    );
+                    
+                    cloud.userData = { 
+                        layer: layer,
+                        speed: 0.1 + Math.random() * 0.2,
+                        originalY: cloud.position.y
+                    };
+                    
+                    cloudSystem.add(cloud);
+                }
             }
+            
+            scene.add(cloudSystem);
         }
 
         function createTerrain() {
@@ -743,9 +843,157 @@
                 drone.add(led);
             }
 
+            // Sistema de escape/vapor dos motores ultra-realista
+            createDroneExhaustSystem();
+
             drone.position.set(0, 25, 0);
             drone.castShadow = true;
             scene.add(drone);
+        }
+
+        function createDroneExhaustSystem() {
+            // Sistema de escape/vapor dos motores
+            const exhaustSystems = [];
+            
+            // Criar escape para cada hélice
+            for (let i = 0; i < 4; i++) {
+                const exhaustCount = 150;
+                const positions = new Float32Array(exhaustCount * 3);
+                const velocities = new Float32Array(exhaustCount * 3);
+                const lifetimes = new Float32Array(exhaustCount);
+                const sizes = new Float32Array(exhaustCount);
+                
+                for (let j = 0; j < exhaustCount; j++) {
+                    positions[j * 3] = (Math.random() - 0.5) * 0.5;
+                    positions[j * 3 + 1] = 0;
+                    positions[j * 3 + 2] = (Math.random() - 0.5) * 0.5;
+                    
+                    velocities[j * 3] = (Math.random() - 0.5) * 0.15;
+                    velocities[j * 3 + 1] = -Math.random() * 0.4 - 0.3;
+                    velocities[j * 3 + 2] = (Math.random() - 0.5) * 0.15;
+                    
+                    lifetimes[j] = Math.random() * 4 + 2;
+                    sizes[j] = Math.random() * 0.3 + 0.1;
+                }
+                
+                const exhaustGeometry = new THREE.BufferGeometry();
+                exhaustGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                exhaustGeometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+                exhaustGeometry.setAttribute('lifetime', new THREE.BufferAttribute(lifetimes, 1));
+                exhaustGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+                
+                const exhaustMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                        time: { value: 0 },
+                        opacity: { value: 0.2 }
+                    },
+                    vertexShader: `
+                        attribute vec3 velocity;
+                        attribute float lifetime;
+                        attribute float size;
+                        varying float vLifetime;
+                        varying float vSize;
+                        uniform float time;
+                        
+                        void main() {
+                            vLifetime = lifetime;
+                            vSize = size;
+                            vec3 pos = position + velocity * time * 0.3;
+                            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                            gl_PointSize = vSize * (200.0 / -mvPosition.z) * (1.0 + lifetime * 0.2);
+                            gl_Position = projectionMatrix * mvPosition;
+                        }
+                    `,
+                    fragmentShader: `
+                        varying float vLifetime;
+                        varying float vSize;
+                        uniform float opacity;
+                        
+                        void main() {
+                            float distance = length(gl_PointCoord - vec2(0.5));
+                            if (distance > 0.5) discard;
+                            
+                            float alpha = opacity * (vLifetime / 6.0) * (1.0 - distance * 2.0);
+                            vec3 color = mix(vec3(0.8, 0.9, 1.0), vec3(1.0, 1.0, 1.0), distance);
+                            gl_FragColor = vec4(color, alpha);
+                        }
+                    `,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending
+                });
+                
+                const exhaust = new THREE.Points(exhaustGeometry, exhaustMaterial);
+                
+                // Posicionar em cada hélice
+                const angle = (i / 4) * Math.PI * 2;
+                exhaust.position.set(
+                    Math.cos(angle) * 2,
+                    -0.4,
+                    Math.sin(angle) * 2
+                );
+                
+                exhaust.userData = { 
+                    propellerIndex: i,
+                    time: 0,
+                    originalLifetimes: new Float32Array(lifetimes)
+                };
+                
+                drone.add(exhaust);
+                exhaustSystems.push(exhaust);
+            }
+            
+            drone.userData.exhaustSystems = exhaustSystems;
+        }
+
+        function updateDroneExhaust() {
+            if (!drone.userData.exhaustSystems) return;
+            
+            const time = Date.now() * 0.001;
+            const speed = Math.sqrt(droneVelocity.x * droneVelocity.x + droneVelocity.z * droneVelocity.z);
+            const throttle = Math.min(speed * 20 + 0.3, 1.0);
+            
+            drone.userData.exhaustSystems.forEach((exhaust, systemIndex) => {
+                exhaust.userData.time += 0.016;
+                exhaust.material.uniforms.time.value = exhaust.userData.time;
+                exhaust.material.uniforms.opacity.value = 0.1 + throttle * 0.3;
+                
+                const positions = exhaust.geometry.attributes.position.array;
+                const velocities = exhaust.geometry.attributes.velocity.array;
+                const lifetimes = exhaust.geometry.attributes.lifetime.array;
+                const originalLifetimes = exhaust.userData.originalLifetimes;
+                
+                for (let i = 0; i < positions.length; i += 3) {
+                    // Atualizar posição das partículas
+                    positions[i] += velocities[i] * (1 + throttle);
+                    positions[i + 1] += velocities[i + 1] * (1 + throttle * 2);
+                    positions[i + 2] += velocities[i + 2] * (1 + throttle);
+                    
+                    // Reduzir lifetime
+                    lifetimes[i / 3] -= 0.03;
+                    
+                    // Reset partículas expiradas
+                    if (lifetimes[i / 3] <= 0) {
+                        positions[i] = (Math.random() - 0.5) * 0.5;
+                        positions[i + 1] = 0;
+                        positions[i + 2] = (Math.random() - 0.5) * 0.5;
+                        
+                        velocities[i] = (Math.random() - 0.5) * 0.15;
+                        velocities[i + 1] = -Math.random() * 0.4 - 0.3 - throttle * 0.3;
+                        velocities[i + 2] = (Math.random() - 0.5) * 0.15;
+                        
+                        lifetimes[i / 3] = originalLifetimes[i / 3];
+                    }
+                    
+                    // Adicionar turbulência do rotor
+                    const rotorAngle = (systemIndex / 4) * Math.PI * 2;
+                    const rotorEffect = Math.sin(time * 20 + rotorAngle) * 0.02;
+                    positions[i] += rotorEffect;
+                    positions[i + 2] += rotorEffect;
+                }
+                
+                exhaust.geometry.attributes.position.needsUpdate = true;
+                exhaust.geometry.attributes.lifetime.needsUpdate = true;
+            });
         }
 
         function createScanSystem() {
@@ -1100,57 +1348,259 @@
             }
         }
 
-        function addEnvironmentalElements() {
-            // Adicionar vida selvagem (pássaros voando)
-            for (let i = 0; i < 8; i++) {
-                const birdGeometry = new THREE.SphereGeometry(0.3, 6, 4);
-                const birdMaterial = new THREE.MeshPhongMaterial({ 
-                    color: new THREE.Color().setHSL(Math.random() * 0.1, 0.5, 0.3)
-                });
-                const bird = new THREE.Mesh(birdGeometry, birdMaterial);
-                bird.position.set(
-                    (Math.random() - 0.5) * 200,
-                    20 + Math.random() * 30,
-                    (Math.random() - 0.5) * 200
-                );
-                bird.userData = { 
-                    speed: 0.5 + Math.random() * 0.3,
-                    angle: Math.random() * Math.PI * 2,
-                    height: bird.position.y
-                };
-                scene.add(bird);
+        function createWeatherSystem() {
+            // Sistema de partículas atmosféricas
+            const particleCount = 2000;
+            const positions = new Float32Array(particleCount * 3);
+            const velocities = new Float32Array(particleCount * 3);
+            
+            for (let i = 0; i < particleCount; i++) {
+                positions[i * 3] = (Math.random() - 0.5) * 400;
+                positions[i * 3 + 1] = Math.random() * 100 + 10;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 400;
+                
+                velocities[i * 3] = (Math.random() - 0.5) * 0.1;
+                velocities[i * 3 + 1] = -Math.random() * 0.05;
+                velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.1;
+            }
+            
+            const particleGeometry = new THREE.BufferGeometry();
+            particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            particleGeometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+            
+            const particleMaterial = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 0.1,
+                transparent: true,
+                opacity: 0.6,
+                blending: THREE.AdditiveBlending
+            });
+            
+            atmosphericParticles = new THREE.Points(particleGeometry, particleMaterial);
+            scene.add(atmosphericParticles);
+        }
+
+        function initializeAudio() {
+            // Sistema de áudio imersivo
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Som ambiente do vento
+                createWindAmbient();
+                
+                // Som do drone
+                createDroneSound();
+                
+            } catch (e) {
+                console.log('Áudio não disponível:', e);
             }
         }
 
+        function createWindAmbient() {
+            if (!audioContext) return;
+            
+            // Gerador de ruído branco para vento
+            const bufferSize = audioContext.sampleRate * 2;
+            const noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            
+            for (let i = 0; i < bufferSize; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+            
+            windSound = audioContext.createBufferSource();
+            windSound.buffer = noiseBuffer;
+            windSound.loop = true;
+            
+            const windGain = audioContext.createGain();
+            windGain.gain.value = 0.05;
+            
+            const windFilter = audioContext.createBiquadFilter();
+            windFilter.type = 'lowpass';
+            windFilter.frequency.value = 300;
+            
+            windSound.connect(windFilter);
+            windFilter.connect(windGain);
+            windGain.connect(audioContext.destination);
+        }
+
+        function createDroneSound() {
+            if (!audioContext) return;
+            
+            // Oscilador para som do drone
+            droneSound = audioContext.createOscillator();
+            droneSound.type = 'sawtooth';
+            droneSound.frequency.value = 120;
+            
+            const droneGain = audioContext.createGain();
+            droneGain.gain.value = 0.03;
+            
+            const droneFilter = audioContext.createBiquadFilter();
+            droneFilter.type = 'bandpass';
+            droneFilter.frequency.value = 150;
+            droneFilter.Q.value = 0.5;
+            
+            droneSound.connect(droneFilter);
+            droneFilter.connect(droneGain);
+            droneGain.connect(audioContext.destination);
+        }
+
+        function addEnvironmentalElements() {
+            // Vida selvagem mais diversa
+            createWildlife();
+            
+            // Efeitos de vapor/névoa
+            createMist();
+            
+            // Folhas caindo
+            createFallingLeaves();
+        }
+
+        function createWildlife() {
+            // Pássaros com modelos mais detalhados
+            for (let i = 0; i < 12; i++) {
+                const birdGroup = new THREE.Group();
+                
+                // Corpo do pássaro
+                const bodyGeometry = new THREE.EllipsoidGeometry(0.4, 0.2, 0.6);
+                const bodyMaterial = new THREE.MeshPhongMaterial({ 
+                    color: new THREE.Color().setHSL(Math.random() * 0.1, 0.6, 0.3)
+                });
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                birdGroup.add(body);
+                
+                // Asas
+                for (let j = 0; j < 2; j++) {
+                    const wingGeometry = new THREE.BoxGeometry(0.8, 0.05, 0.3);
+                    const wing = new THREE.Mesh(wingGeometry, bodyMaterial);
+                    wing.position.x = j === 0 ? -0.3 : 0.3;
+                    wing.userData = { isWing: true, side: j };
+                    birdGroup.add(wing);
+                }
+                
+                birdGroup.position.set(
+                    (Math.random() - 0.5) * 300,
+                    25 + Math.random() * 40,
+                    (Math.random() - 0.5) * 300
+                );
+                
+                birdGroup.userData = { 
+                    speed: 0.8 + Math.random() * 0.6,
+                    angle: Math.random() * Math.PI * 2,
+                    height: birdGroup.position.y,
+                    wingBeat: Math.random() * Math.PI * 2
+                };
+                
+                scene.add(birdGroup);
+            }
+        }
+
+        function createMist() {
+            // Sistema de névoa nas áreas baixas
+            for (let i = 0; i < 8; i++) {
+                const mistGeometry = new THREE.PlaneGeometry(30, 30);
+                const mistMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xffffff,
+                    transparent: true,
+                    opacity: 0.1,
+                    blending: THREE.AdditiveBlending
+                });
+                
+                const mist = new THREE.Mesh(mistGeometry, mistMaterial);
+                mist.rotation.x = -Math.PI / 2;
+                mist.position.set(
+                    (Math.random() - 0.5) * 200,
+                    0.5,
+                    (Math.random() - 0.5) * 200
+                );
+                
+                mist.userData = { 
+                    originalOpacity: mistMaterial.opacity,
+                    drift: Math.random() * 0.02
+                };
+                
+                scene.add(mist);
+            }
+        }
+
+        function createFallingLeaves() {
+            // Folhas caindo das árvores
+            const leafCount = 50;
+            const leafPositions = new Float32Array(leafCount * 3);
+            const leafVelocities = new Float32Array(leafCount * 3);
+            
+            for (let i = 0; i < leafCount; i++) {
+                leafPositions[i * 3] = (Math.random() - 0.5) * 300;
+                leafPositions[i * 3 + 1] = Math.random() * 50 + 20;
+                leafPositions[i * 3 + 2] = (Math.random() - 0.5) * 300;
+                
+                leafVelocities[i * 3] = (Math.random() - 0.5) * 0.02;
+                leafVelocities[i * 3 + 1] = -Math.random() * 0.01 - 0.005;
+                leafVelocities[i * 3 + 2] = (Math.random() - 0.5) * 0.02;
+            }
+            
+            const leafGeometry = new THREE.BufferGeometry();
+            leafGeometry.setAttribute('position', new THREE.BufferAttribute(leafPositions, 3));
+            leafGeometry.setAttribute('velocity', new THREE.BufferAttribute(leafVelocities, 3));
+            
+            const leafMaterial = new THREE.PointsMaterial({
+                color: 0x8B4513,
+                size: 0.3,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            const leaves = new THREE.Points(leafGeometry, leafMaterial);
+            leaves.userData = { type: 'leaves' };
+            scene.add(leaves);
+        }
+
         function addLights() {
-            // Luz ambiente mais suave
-            const ambientLight = new THREE.AmbientLight(0x87CEEB, 0.4);
+            // Sistema de iluminação cinematográfica avançada
+            
+            // Luz ambiente dinâmica
+            const ambientLight = new THREE.AmbientLight(0x87CEEB, 0.3);
+            ambientLight.userData = { type: 'ambient' };
             scene.add(ambientLight);
 
-            // Luz direcional principal (sol)
-            const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            // Sol principal com sombras ultra-realistas
+            const sunLight = new THREE.DirectionalLight(0xfff8dc, 2.5);
             sunLight.position.set(100, 120, 50);
             sunLight.castShadow = true;
-            sunLight.shadow.mapSize.width = 4096;
-            sunLight.shadow.mapSize.height = 4096;
-            sunLight.shadow.camera.near = 0.5;
-            sunLight.shadow.camera.far = 300;
-            sunLight.shadow.camera.left = -100;
-            sunLight.shadow.camera.right = 100;
-            sunLight.shadow.camera.top = 100;
-            sunLight.shadow.camera.bottom = -100;
-            sunLight.shadow.bias = -0.0001;
+            sunLight.shadow.mapSize.width = 8192;  // Sombras 8K
+            sunLight.shadow.mapSize.height = 8192;
+            sunLight.shadow.camera.near = 0.1;
+            sunLight.shadow.camera.far = 500;
+            sunLight.shadow.camera.left = -150;
+            sunLight.shadow.camera.right = 150;
+            sunLight.shadow.camera.top = 150;
+            sunLight.shadow.camera.bottom = -150;
+            sunLight.shadow.bias = -0.00005;
+            sunLight.shadow.normalBias = 0.02;
+            sunLight.userData = { type: 'sun' };
             scene.add(sunLight);
 
-            // Luz hemisférica para simular reflexo do céu
-            const hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x8B7355, 0.3);
-            hemiLight.position.set(0, 50, 0);
+            // Luz hemisférica para reflexo do céu
+            const hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x8B7355, 0.6);
+            hemiLight.position.set(0, 100, 0);
             scene.add(hemiLight);
 
-            // Luz de preenchimento
-            const fillLight = new THREE.DirectionalLight(0x87CEEB, 0.3);
-            fillLight.position.set(-50, 30, -50);
+            // Luz de preenchimento suave
+            const fillLight = new THREE.DirectionalLight(0xadd8e6, 0.4);
+            fillLight.position.set(-80, 60, -80);
+            fillLight.castShadow = false;
             scene.add(fillLight);
+
+            // Luz de contorno
+            const rimLight = new THREE.DirectionalLight(0xffeaa7, 0.8);
+            rimLight.position.set(-100, 80, 100);
+            rimLight.castShadow = false;
+            scene.add(rimLight);
+
+            // Luz atmosférica
+            const fogLight = new THREE.PointLight(0x87CEEB, 1, 200);
+            fogLight.position.set(0, 50, 0);
+            scene.add(fogLight);
         }
 
         function setupCameraControls() {
@@ -1297,6 +1747,9 @@
                 }
             });
 
+            // Atualizar sistema de escape dos motores
+            updateDroneExhaust();
+
             // Manter gimbal da câmera sempre apontando para baixo
             const gimbalGroup = drone.children.find(child => child.userData && child.userData.oscillation !== undefined);
             if (gimbalGroup) {
@@ -1318,51 +1771,165 @@
         function updateScanSystem() {
             const time = Date.now() * 0.001;
             
-            // Pulsar o feixe de escaneamento mais realisticamente
-            const pulseIntensity = 0.5 + Math.sin(time * 8) * 0.4;
+            // Pulsar o feixe de escaneamento com efeito mais cinematográfico
+            const pulseIntensity = 0.4 + Math.sin(time * 12) * 0.3 + Math.sin(time * 3) * 0.2;
             scanBeam.material.opacity = pulseIntensity;
-            scanLight.intensity = 2 + pulseIntensity * 1.5;
+            scanLight.intensity = 1.5 + pulseIntensity * 2;
+            
+            // Efeito de distorção no feixe
+            scanBeam.scale.x = 1 + Math.sin(time * 15) * 0.1;
+            scanBeam.scale.z = 1 + Math.cos(time * 18) * 0.1;
 
-            // Atualizar partículas de escaneamento com movimento mais natural
+            // Atualizar partículas de escaneamento com física avançada
             scanParticles.forEach(particles => {
                 const positions = particles.geometry.attributes.position.array;
                 const colors = particles.geometry.attributes.color.array;
                 
                 for (let i = 0; i < positions.length; i += 3) {
-                    // Movimento das partículas
-                    positions[i + 1] -= 0.3 + Math.random() * 0.2;
-                    positions[i] += (Math.random() - 0.5) * 0.1;
-                    positions[i + 2] += (Math.random() - 0.5) * 0.1;
+                    // Movimento com turbulência
+                    const turbulenceX = Math.sin(time * 8 + i * 0.1) * 0.02;
+                    const turbulenceZ = Math.cos(time * 6 + i * 0.1) * 0.02;
                     
-                    // Reset quando chegam ao chão
-                    if (positions[i + 1] < -20) {
-                        positions[i + 1] = 0;
-                        positions[i] = (Math.random() - 0.5) * 3;
-                        positions[i + 2] = (Math.random() - 0.5) * 3;
+                    positions[i] += turbulenceX + (Math.random() - 0.5) * 0.05;
+                    positions[i + 1] -= 0.4 + Math.random() * 0.3;
+                    positions[i + 2] += turbulenceZ + (Math.random() - 0.5) * 0.05;
+                    
+                    // Reset com efeito de dispersão
+                    if (positions[i + 1] < -22) {
+                        const dispersal = 2 + Math.sin(time * 2) * 1;
+                        positions[i + 1] = Math.random() * 2;
+                        positions[i] = (Math.random() - 0.5) * dispersal;
+                        positions[i + 2] = (Math.random() - 0.5) * dispersal;
                         scanPoints++;
                         
-                        // Criar efeito de impacto no terreno
-                        createScanImpact(
+                        // Criar efeito de impacto com energia
+                        createAdvancedScanImpact(
                             drone.position.x + positions[i],
                             drone.position.z + positions[i + 2]
                         );
                     }
                     
-                    // Variar cores das partículas
-                    const intensity = 0.5 + Math.sin(time * 5 + i) * 0.5;
-                    colors[i] = 0;
-                    colors[i + 1] = intensity;
-                    colors[i + 2] = intensity * 0.5;
+                    // Cores dinâmicas baseadas na profundidade
+                    const depth = Math.abs(positions[i + 1]) / 20;
+                    const pulseEffect = Math.sin(time * 10 + i * 0.5) * 0.3;
+                    
+                    colors[i] = 0.1 + depth * 0.2;  // R
+                    colors[i + 1] = 0.7 + pulseEffect;  // G
+                    colors[i + 2] = 0.3 + depth * 0.4 + pulseEffect * 0.2;  // B
                 }
                 
                 particles.geometry.attributes.position.needsUpdate = true;
                 particles.geometry.attributes.color.needsUpdate = true;
             });
 
-            // Adicionar pontos de escaneamento visíveis no terreno
-            if (Math.random() < 0.1 && scanPoints % 10 === 0) {
-                createScanPoint(drone.position.x, drone.position.z);
+            // Sistema de escaneamento inteligente
+            if (Math.random() < 0.15 && scanPoints % 8 === 0) {
+                createDataVisualization(drone.position.x, drone.position.z);
             }
+        }
+
+        function createAdvancedScanImpact(x, z) {
+            // Múltiplos anéis de energia
+            for (let ring = 0; ring < 3; ring++) {
+                const impactGeometry = new THREE.RingGeometry(0.1 + ring * 0.3, 0.8 + ring * 0.4, 12);
+                const impactMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                        time: { value: 0 },
+                        opacity: { value: 1 - ring * 0.3 }
+                    },
+                    vertexShader: `
+                        uniform float time;
+                        void main() {
+                            vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform float time;
+                        uniform float opacity;
+                        void main() {
+                            vec3 color = vec3(0.0, 1.0, 0.6);
+                            float pulse = sin(time * 15.0) * 0.5 + 0.5;
+                            gl_FragColor = vec4(color, opacity * pulse);
+                        }
+                    `,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    side: THREE.DoubleSide
+                });
+                
+                const impact = new THREE.Mesh(impactGeometry, impactMaterial);
+                impact.position.set(x, 0.1 + ring * 0.05, z);
+                impact.rotation.x = -Math.PI / 2;
+                scene.add(impact);
+
+                // Animação avançada
+                let animationTime = 0;
+                const animate = () => {
+                    animationTime += 0.05;
+                    impact.material.uniforms.time.value = animationTime;
+                    impact.scale.x = 1 + animationTime * 2;
+                    impact.scale.y = 1 + animationTime * 2;
+                    impact.material.uniforms.opacity.value = (1 - ring * 0.3) * (1 - animationTime / 3);
+                    
+                    if (animationTime < 3) {
+                        requestAnimationFrame(animate);
+                    } else {
+                        scene.remove(impact);
+                    }
+                };
+                
+                setTimeout(() => animate(), ring * 100);
+            }
+        }
+
+        function createDataVisualization(x, z) {
+            // Visualização de dados escaneados
+            const dataGroup = new THREE.Group();
+            
+            // Hologramas de dados
+            for (let i = 0; i < 5; i++) {
+                const height = Math.random() * 3 + 1;
+                const barGeometry = new THREE.BoxGeometry(0.2, height, 0.2);
+                const barMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x00ff88,
+                    transparent: true,
+                    opacity: 0.7,
+                    emissive: 0x003300
+                });
+                
+                const bar = new THREE.Mesh(barGeometry, barMaterial);
+                bar.position.set(
+                    (i - 2) * 0.4,
+                    height / 2,
+                    0
+                );
+                dataGroup.add(bar);
+            }
+            
+            dataGroup.position.set(
+                x + (Math.random() - 0.5) * 5,
+                0,
+                z + (Math.random() - 0.5) * 5
+            );
+            
+            scene.add(dataGroup);
+            
+            // Fade out após alguns segundos
+            setTimeout(() => {
+                const fadeOut = () => {
+                    dataGroup.children.forEach(child => {
+                        child.material.opacity -= 0.02;
+                    });
+                    
+                    if (dataGroup.children[0].material.opacity > 0) {
+                        requestAnimationFrame(fadeOut);
+                    } else {
+                        scene.remove(dataGroup);
+                    }
+                };
+                fadeOut();
+            }, 3000);
         }
 
         function createScanImpact(x, z) {
@@ -1435,49 +2002,173 @@
         function updateEnvironment() {
             const time = Date.now() * 0.001;
             
-            // Animar água (ondulações)
+            // Atualizar skybox dinâmico
+            if (skybox && skybox.userData.isSkybox) {
+                skybox.material.uniforms.time.value = time;
+            }
+            
+            // Animar nuvens volumétricas
+            if (cloudSystem) {
+                cloudSystem.children.forEach(cloud => {
+                    cloud.position.x += cloud.userData.speed * Math.sin(time * 0.1);
+                    cloud.position.y = cloud.userData.originalY + Math.sin(time * 0.2 + cloud.position.x * 0.01) * 5;
+                    cloud.rotation.y += 0.001;
+                });
+            }
+            
+            // Animar partículas atmosféricas
+            if (atmosphericParticles) {
+                const positions = atmosphericParticles.geometry.attributes.position.array;
+                const velocities = atmosphericParticles.geometry.attributes.velocity.array;
+                
+                for (let i = 0; i < positions.length; i += 3) {
+                    positions[i] += velocities[i];
+                    positions[i + 1] += velocities[i + 1];
+                    positions[i + 2] += velocities[i + 2];
+                    
+                    // Reset partículas que saíram da área
+                    if (positions[i + 1] < 0) {
+                        positions[i] = (Math.random() - 0.5) * 400;
+                        positions[i + 1] = 100;
+                        positions[i + 2] = (Math.random() - 0.5) * 400;
+                    }
+                }
+                atmosphericParticles.geometry.attributes.position.needsUpdate = true;
+            }
+
+            // Animar água com reflexos realistas
             rivers.concat(lakes).forEach((water, index) => {
                 if (water.material) {
-                    water.material.opacity = 0.8 + Math.sin(time * 2 + index) * 0.1;
+                    water.material.opacity = 0.8 + Math.sin(time * 1.5 + index) * 0.15;
+                    // Simular ondulações
+                    if (water.geometry.attributes.position) {
+                        const positions = water.geometry.attributes.position.array;
+                        for (let i = 1; i < positions.length; i += 3) {
+                            positions[i] = Math.sin(time * 3 + positions[i - 1] * 0.1) * 0.1;
+                        }
+                        water.geometry.attributes.position.needsUpdate = true;
+                    }
                 }
             });
 
-            // Animar pássaros
+            // Pássaros com voo mais realista
             scene.children.forEach(child => {
-                if (child.userData && child.userData.speed) {
-                    child.userData.angle += child.userData.speed * 0.02;
+                if (child.userData && child.userData.speed && child.userData.wingBeat !== undefined) {
+                    // Movimento de voo
+                    child.userData.angle += child.userData.speed * 0.015;
                     child.position.x += Math.cos(child.userData.angle) * child.userData.speed;
                     child.position.z += Math.sin(child.userData.angle) * child.userData.speed;
-                    child.position.y = child.userData.height + Math.sin(time + child.userData.angle) * 2;
+                    child.position.y = child.userData.height + Math.sin(time * 2 + child.userData.angle) * 3;
                     
-                    // Resetar posição se muito longe
-                    if (Math.abs(child.position.x) > 200 || Math.abs(child.position.z) > 200) {
+                    // Animação das asas
+                    child.userData.wingBeat += 0.3;
+                    child.children.forEach(part => {
+                        if (part.userData && part.userData.isWing) {
+                            const wingAngle = Math.sin(child.userData.wingBeat) * 0.8;
+                            part.rotation.z = part.userData.side === 0 ? wingAngle : -wingAngle;
+                        }
+                    });
+                    
+                    // Orientação do pássaro
+                    child.rotation.y = child.userData.angle;
+                    child.rotation.z = Math.sin(child.userData.wingBeat) * 0.1;
+                    
+                    // Reset posição
+                    if (Math.abs(child.position.x) > 250 || Math.abs(child.position.z) > 250) {
                         child.position.x = (Math.random() - 0.5) * 100;
                         child.position.z = (Math.random() - 0.5) * 100;
                     }
                 }
             });
 
-            // Movimento sutil das árvores (vento)
+            // Movimento realista das árvores
             forests.forEach(tree => {
                 if (tree.children.length > 1) {
                     tree.children.forEach((part, index) => {
-                        if (index > 0) { // Não mover o tronco
-                            part.rotation.x = Math.sin(time + tree.position.x * 0.1) * 0.05;
-                            part.rotation.z = Math.cos(time + tree.position.z * 0.1) * 0.03;
+                        if (index > 0) {
+                            const windStrength = 0.03 + Math.sin(time * 0.5) * 0.02;
+                            part.rotation.x = Math.sin(time * 0.8 + tree.position.x * 0.05) * windStrength;
+                            part.rotation.z = Math.cos(time * 0.6 + tree.position.z * 0.05) * windStrength;
                         }
                     });
                 }
             });
 
-            // Animar chamas da fogueira da aldeia
+            // Chamas da fogueira mais realistas
             scene.children.forEach(child => {
                 if (child.userData && child.userData.isFlame) {
-                    child.scale.x = 1 + Math.sin(time * 8) * 0.3;
-                    child.scale.z = 1 + Math.cos(time * 6) * 0.3;
-                    child.scale.y = 1 + Math.sin(time * 10) * 0.2;
+                    child.scale.x = 1 + Math.sin(time * 12) * 0.4;
+                    child.scale.z = 1 + Math.cos(time * 8) * 0.4;
+                    child.scale.y = 1 + Math.sin(time * 15) * 0.3;
+                    child.rotation.y += 0.02;
                 }
             });
+
+            // Névoa dinâmica
+            scene.children.forEach(child => {
+                if (child.userData && child.userData.drift !== undefined) {
+                    child.position.x += Math.sin(time * child.userData.drift) * 0.1;
+                    child.position.z += Math.cos(time * child.userData.drift) * 0.1;
+                    child.material.opacity = child.userData.originalOpacity + 
+                                           Math.sin(time * 2) * 0.05;
+                }
+            });
+
+            // Folhas caindo
+            scene.children.forEach(child => {
+                if (child.userData && child.userData.type === 'leaves') {
+                    const positions = child.geometry.attributes.position.array;
+                    const velocities = child.geometry.attributes.velocity.array;
+                    
+                    for (let i = 0; i < positions.length; i += 3) {
+                        positions[i] += velocities[i] + Math.sin(time + i) * 0.001;
+                        positions[i + 1] += velocities[i + 1];
+                        positions[i + 2] += velocities[i + 2] + Math.cos(time + i) * 0.001;
+                        
+                        // Reset folhas que chegaram ao chão
+                        if (positions[i + 1] < 0) {
+                            positions[i] = (Math.random() - 0.5) * 300;
+                            positions[i + 1] = 50 + Math.random() * 20;
+                            positions[i + 2] = (Math.random() - 0.5) * 300;
+                        }
+                    }
+                    child.geometry.attributes.position.needsUpdate = true;
+                }
+            });
+
+            // Atualizar áudio baseado na velocidade do drone
+            updateAudio();
+        }
+
+        function updateAudio() {
+            if (!audioContext || !droneSound) return;
+            
+            try {
+                const speed = Math.sqrt(droneVelocity.x * droneVelocity.x + droneVelocity.z * droneVelocity.z);
+                
+                // Ajustar frequência do drone baseada na velocidade
+                if (droneSound.frequency) {
+                    droneSound.frequency.setValueAtTime(
+                        120 + speed * 1000, 
+                        audioContext.currentTime
+                    );
+                }
+                
+                // Iniciar áudio no primeiro clique (política do navegador)
+                if (audioContext.state === 'suspended') {
+                    document.addEventListener('click', () => {
+                        audioContext.resume();
+                        if (windSound && windSound.start) {
+                            windSound.start();
+                        }
+                        if (droneSound && droneSound.start) {
+                            droneSound.start();
+                        }
+                    }, { once: true });
+                }
+            } catch (e) {
+                // Silenciosamente ignorar erros de áudio
+            }
         }
 
         function resetDrone() {
