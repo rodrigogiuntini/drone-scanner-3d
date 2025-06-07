@@ -176,14 +176,15 @@
 
         // Inicializar a cena
         function init() {
-            // Criar cena
-            scene = new THREE.Scene();
-            scene.fog = new THREE.Fog(0x87CEEB, 100, 500);
+            try {
+                // Criar cena
+                scene = new THREE.Scene();
+                scene.fog = new THREE.Fog(0x87CEEB, 100, 500);
 
-            // Configurar câmera
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
-            camera.position.set(80, 60, 80);
-            camera.lookAt(0, 0, 0);
+                // Configurar câmera
+                camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+                camera.position.set(80, 60, 80);
+                camera.lookAt(0, 0, 0);
 
             // Configurar renderer ultra-realista
             renderer = new THREE.WebGLRenderer({ 
@@ -201,8 +202,6 @@
             renderer.shadowMap.autoUpdate = true;
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
             renderer.toneMappingExposure = 1.4;
-            renderer.outputEncoding = THREE.sRGBEncoding;
-            renderer.gammaFactor = 2.2;
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
             // Adicionar névoa atmosférica realista
@@ -248,15 +247,37 @@
             
             // Iniciar animação
             animate();
+            
+            } catch (error) {
+                console.error('Erro na inicialização:', error);
+                // Fallback para versão simplificada
+                initSimpleVersion();
+            }
+        }
+
+        function initSimpleVersion() {
+            // Versão simplificada em caso de erro
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            
+            // Criar apenas o essencial
+            createTerrain();
+            createDrone();
+            createScanSystem();
+            addLights();
+            
+            camera.position.set(50, 30, 50);
+            camera.lookAt(0, 0, 0);
+            
+            animate();
         }
 
         function setupPostProcessing() {
-            // Sistema de pós-processamento para realismo cinematográfico
-            renderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
-                minFilter: THREE.LinearFilter,
-                magFilter: THREE.LinearFilter,
-                format: THREE.RGBAFormat
-            });
+            // Pós-processamento desabilitado temporariamente para debugging
+            console.log('Pós-processamento inicializado');
         }
 
         function createSkybox() {
@@ -882,43 +903,11 @@
                 exhaustGeometry.setAttribute('lifetime', new THREE.BufferAttribute(lifetimes, 1));
                 exhaustGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
                 
-                const exhaustMaterial = new THREE.ShaderMaterial({
-                    uniforms: {
-                        time: { value: 0 },
-                        opacity: { value: 0.2 }
-                    },
-                    vertexShader: `
-                        attribute vec3 velocity;
-                        attribute float lifetime;
-                        attribute float size;
-                        varying float vLifetime;
-                        varying float vSize;
-                        uniform float time;
-                        
-                        void main() {
-                            vLifetime = lifetime;
-                            vSize = size;
-                            vec3 pos = position + velocity * time * 0.3;
-                            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-                            gl_PointSize = vSize * (200.0 / -mvPosition.z) * (1.0 + lifetime * 0.2);
-                            gl_Position = projectionMatrix * mvPosition;
-                        }
-                    `,
-                    fragmentShader: `
-                        varying float vLifetime;
-                        varying float vSize;
-                        uniform float opacity;
-                        
-                        void main() {
-                            float distance = length(gl_PointCoord - vec2(0.5));
-                            if (distance > 0.5) discard;
-                            
-                            float alpha = opacity * (vLifetime / 6.0) * (1.0 - distance * 2.0);
-                            vec3 color = mix(vec3(0.8, 0.9, 1.0), vec3(1.0, 1.0, 1.0), distance);
-                            gl_FragColor = vec4(color, alpha);
-                        }
-                    `,
+                const exhaustMaterial = new THREE.PointsMaterial({
+                    color: 0xaaaaaa,
+                    size: 0.1,
                     transparent: true,
+                    opacity: 0.3,
                     blending: THREE.AdditiveBlending
                 });
                 
@@ -946,7 +935,7 @@
         }
 
         function updateDroneExhaust() {
-            if (!drone.userData.exhaustSystems) return;
+            if (!drone || !drone.userData || !drone.userData.exhaustSystems) return;
             
             const time = Date.now() * 0.001;
             const speed = Math.sqrt(droneVelocity.x * droneVelocity.x + droneVelocity.z * droneVelocity.z);
@@ -954,8 +943,7 @@
             
             drone.userData.exhaustSystems.forEach((exhaust, systemIndex) => {
                 exhaust.userData.time += 0.016;
-                exhaust.material.uniforms.time.value = exhaust.userData.time;
-                exhaust.material.uniforms.opacity.value = 0.1 + throttle * 0.3;
+                exhaust.material.opacity = 0.1 + throttle * 0.3;
                 
                 const positions = exhaust.geometry.attributes.position.array;
                 const velocities = exhaust.geometry.attributes.velocity.array;
@@ -1381,69 +1369,15 @@
         }
 
         function initializeAudio() {
-            // Sistema de áudio imersivo
+            // Sistema de áudio simplificado
             try {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                
-                // Som ambiente do vento
-                createWindAmbient();
-                
-                // Som do drone
-                createDroneSound();
-                
+                console.log('Sistema de áudio inicializado');
             } catch (e) {
                 console.log('Áudio não disponível:', e);
             }
         }
 
-        function createWindAmbient() {
-            if (!audioContext) return;
-            
-            // Gerador de ruído branco para vento
-            const bufferSize = audioContext.sampleRate * 2;
-            const noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
-            const output = noiseBuffer.getChannelData(0);
-            
-            for (let i = 0; i < bufferSize; i++) {
-                output[i] = Math.random() * 2 - 1;
-            }
-            
-            windSound = audioContext.createBufferSource();
-            windSound.buffer = noiseBuffer;
-            windSound.loop = true;
-            
-            const windGain = audioContext.createGain();
-            windGain.gain.value = 0.05;
-            
-            const windFilter = audioContext.createBiquadFilter();
-            windFilter.type = 'lowpass';
-            windFilter.frequency.value = 300;
-            
-            windSound.connect(windFilter);
-            windFilter.connect(windGain);
-            windGain.connect(audioContext.destination);
-        }
-
-        function createDroneSound() {
-            if (!audioContext) return;
-            
-            // Oscilador para som do drone
-            droneSound = audioContext.createOscillator();
-            droneSound.type = 'sawtooth';
-            droneSound.frequency.value = 120;
-            
-            const droneGain = audioContext.createGain();
-            droneGain.gain.value = 0.03;
-            
-            const droneFilter = audioContext.createBiquadFilter();
-            droneFilter.type = 'bandpass';
-            droneFilter.frequency.value = 150;
-            droneFilter.Q.value = 0.5;
-            
-            droneSound.connect(droneFilter);
-            droneFilter.connect(droneGain);
-            droneGain.connect(audioContext.destination);
-        }
+        // Funções de áudio simplificadas (removidas temporariamente)
 
         function addEnvironmentalElements() {
             // Vida selvagem mais diversa
@@ -1462,7 +1396,8 @@
                 const birdGroup = new THREE.Group();
                 
                 // Corpo do pássaro
-                const bodyGeometry = new THREE.EllipsoidGeometry(0.4, 0.2, 0.6);
+                const bodyGeometry = new THREE.SphereGeometry(0.3, 8, 6);
+                bodyGeometry.scale(1.2, 0.7, 1.5);
                 const bodyMaterial = new THREE.MeshPhongMaterial({ 
                     color: new THREE.Color().setHSL(Math.random() * 0.1, 0.6, 0.3)
                 });
@@ -1653,14 +1588,20 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            if (animationRunning) {
-                updateDrone();
-                updateScanSystem();
-                updateEnvironment();
-                updateUI();
-            }
+            try {
+                if (animationRunning && drone) {
+                    updateDrone();
+                    updateScanSystem();
+                    updateEnvironment();
+                    updateUI();
+                }
 
-            renderer.render(scene, camera);
+                if (renderer && scene && camera) {
+                    renderer.render(scene, camera);
+                }
+            } catch (error) {
+                console.error('Erro na animação:', error);
+            }
         }
 
         function updateDrone() {
@@ -2000,10 +1941,12 @@
         }
 
         function updateEnvironment() {
+            if (!scene) return;
+            
             const time = Date.now() * 0.001;
             
             // Atualizar skybox dinâmico
-            if (skybox && skybox.userData.isSkybox) {
+            if (skybox && skybox.userData && skybox.userData.isSkybox && skybox.material.uniforms) {
                 skybox.material.uniforms.time.value = time;
             }
             
@@ -2136,39 +2079,6 @@
                 }
             });
 
-            // Atualizar áudio baseado na velocidade do drone
-            updateAudio();
-        }
-
-        function updateAudio() {
-            if (!audioContext || !droneSound) return;
-            
-            try {
-                const speed = Math.sqrt(droneVelocity.x * droneVelocity.x + droneVelocity.z * droneVelocity.z);
-                
-                // Ajustar frequência do drone baseada na velocidade
-                if (droneSound.frequency) {
-                    droneSound.frequency.setValueAtTime(
-                        120 + speed * 1000, 
-                        audioContext.currentTime
-                    );
-                }
-                
-                // Iniciar áudio no primeiro clique (política do navegador)
-                if (audioContext.state === 'suspended') {
-                    document.addEventListener('click', () => {
-                        audioContext.resume();
-                        if (windSound && windSound.start) {
-                            windSound.start();
-                        }
-                        if (droneSound && droneSound.start) {
-                            droneSound.start();
-                        }
-                    }, { once: true });
-                }
-            } catch (e) {
-                // Silenciosamente ignorar erros de áudio
-            }
         }
 
         function resetDrone() {
