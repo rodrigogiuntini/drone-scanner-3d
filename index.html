@@ -1,0 +1,1510 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drone Scanner 3D - Simulação de Mapeamento</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            overflow: hidden;
+            color: white;
+        }
+
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #00ff88;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+
+        #info h1 {
+            color: #00ff88;
+            font-size: 24px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+
+        #info p {
+            color: #ffffff;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        #status {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #ff6b00;
+            font-family: 'Courier New', monospace;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            color: #ffffff;
+        }
+
+        .status-value {
+            color: #ff6b00;
+            font-weight: bold;
+        }
+
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #0088ff;
+        }
+
+        button {
+            background: linear-gradient(45deg, #0088ff, #00ff88);
+            border: none;
+            color: white;
+            padding: 10px 15px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(0, 136, 255, 0.5);
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="info">
+            <h1>🚁 DRONE SCANNER</h1>
+            <p>Simulação de mapeamento aéreo com escaneamento 3D</p>
+            <p>Drone autônomo realizando varredura do terreno</p>
+        </div>
+
+        <div id="controls">
+            <button onclick="toggleAnimation()">⏯️ Play/Pause</button>
+            <button onclick="resetDrone()">🔄 Reset</button>
+            <button onclick="changeScanMode()">🔍 Modo Scan</button>
+        </div>
+
+        <div id="status">
+            <div class="status-item">
+                <span>Altitude:</span>
+                <span id="altitude" class="status-value">15.0m</span>
+            </div>
+            <div class="status-item">
+                <span>Velocidade:</span>
+                <span id="speed" class="status-value">5.2 m/s</span>
+            </div>
+            <div class="status-item">
+                <span>Bateria:</span>
+                <span id="battery" class="status-value">87%</span>
+            </div>
+            <div class="status-item">
+                <span>Pontos Scan:</span>
+                <span id="scanPoints" class="status-value">0</span>
+            </div>
+        </div>
+
+        <div id="canvas-container"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Variáveis globais
+        let scene, camera, renderer, drone, terrain, scanBeam, scanLight;
+        let animationRunning = true;
+        let droneAngle = 0;
+        let scanRadius = 30;
+        let scanPoints = 0;
+        let scanMode = 1;
+        let scanParticles = [];
+        let droneVelocity = { x: 0, y: 0, z: 0 };
+        let droneAcceleration = { x: 0, y: 0, z: 0 };
+        let windEffect = { x: 0, y: 0, z: 0 };
+        let propellers = [];
+        let terrainTexture, skybox;
+        let rivers = [], lakes = [], mountains = [], forests = [];
+        let village = [], canoes = [], totems = [];
+
+        // Inicializar a cena
+        function init() {
+            // Criar cena
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x87CEEB, 100, 500);
+
+            // Configurar câmera
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.set(80, 60, 80);
+            camera.lookAt(0, 0, 0);
+
+            // Configurar renderer
+            renderer = new THREE.WebGLRenderer({ 
+                antialias: true, 
+                alpha: true,
+                shadowMap: true,
+                physicallyCorrectLights: true
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x87CEEB, 1);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.shadowMap.cascade = true;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // Criar skybox
+            createSkybox();
+            
+            // Criar terreno
+            createTerrain();
+            
+            // Criar elementos naturais
+            createWaterBodies();
+            createMountains();
+            createForests();
+            
+            // Criar aldeia indígena
+            createIndigenousVillage();
+            
+            // Criar drone
+            createDrone();
+            
+            // Criar sistema de escaneamento
+            createScanSystem();
+            
+            // Adicionar luzes
+            addLights();
+            
+            // Adicionar elementos ambientais
+            addEnvironmentalElements();
+            
+            // Controles de câmera orbital
+            setupCameraControls();
+            
+            // Iniciar animação
+            animate();
+        }
+
+        function createSkybox() {
+            const skyGeometry = new THREE.SphereGeometry(1000, 32, 32);
+            const skyMaterial = new THREE.MeshBasicMaterial({
+                color: 0x87CEEB,
+                side: THREE.BackSide,
+                fog: false
+            });
+            skybox = new THREE.Mesh(skyGeometry, skyMaterial);
+            scene.add(skybox);
+
+            // Adicionar nuvens
+            for (let i = 0; i < 20; i++) {
+                const cloudGeometry = new THREE.SphereGeometry(Math.random() * 30 + 20, 8, 8);
+                const cloudMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xffffff,
+                    transparent: true,
+                    opacity: 0.3
+                });
+                const cloud = new THREE.Mesh(cloudGeometry, cloudMaterial);
+                cloud.position.set(
+                    (Math.random() - 0.5) * 800,
+                    Math.random() * 200 + 100,
+                    (Math.random() - 0.5) * 800
+                );
+                cloud.scale.set(
+                    Math.random() * 2 + 1,
+                    Math.random() * 0.5 + 0.5,
+                    Math.random() * 2 + 1
+                );
+                scene.add(cloud);
+            }
+        }
+
+        function createTerrain() {
+            // Geometria do terreno expandido
+            const terrainGeometry = new THREE.PlaneGeometry(300, 300, 150, 150);
+            const vertices = terrainGeometry.attributes.position.array;
+            const colors = new Float32Array(vertices.length);
+            
+            // Adicionar variação de altura mais realista com zonas específicas
+            for (let i = 0; i < vertices.length; i += 3) {
+                const x = vertices[i];
+                const y = vertices[i + 1];
+                const distance = Math.sqrt(x * x + y * y);
+                
+                // Noise em múltiplas camadas
+                let height = 0;
+                height += Math.sin(x * 0.015) * Math.cos(y * 0.015) * 12;
+                height += Math.sin(x * 0.03) * Math.cos(y * 0.03) * 6;
+                height += Math.sin(x * 0.08) * Math.cos(y * 0.08) * 3;
+                height += (Math.random() - 0.5) * 2;
+                
+                // Criar vales para rios
+                const riverPath1 = Math.abs(Math.sin(x * 0.02) * 50 - y);
+                const riverPath2 = Math.abs(Math.cos(y * 0.015) * 60 - x);
+                if (riverPath1 < 8) height -= (8 - riverPath1) * 0.8;
+                if (riverPath2 < 10) height -= (10 - riverPath2) * 0.6;
+                
+                // Elevar bordas do mapa
+                if (distance > 120) {
+                    height += (distance - 120) * 0.3;
+                }
+                
+                vertices[i + 2] = height;
+                
+                // Cores baseadas na altura e tipo de terreno
+                const normalizedHeight = (height + 15) / 30;
+                if (height < -2) {
+                    // Área próxima à água - solo mais escuro
+                    colors[i] = 0.15 + normalizedHeight * 0.2;     // R
+                    colors[i + 1] = 0.25 + normalizedHeight * 0.3; // G
+                    colors[i + 2] = 0.08 + normalizedHeight * 0.15; // B
+                } else if (height < 5) {
+                    // Planície - verde
+                    colors[i] = 0.2 + normalizedHeight * 0.25;     // R
+                    colors[i + 1] = 0.4 + normalizedHeight * 0.4;  // G
+                    colors[i + 2] = 0.1 + normalizedHeight * 0.2;  // B
+                } else {
+                    // Elevações - mais marrom
+                    colors[i] = 0.3 + normalizedHeight * 0.3;      // R
+                    colors[i + 1] = 0.35 + normalizedHeight * 0.3; // G
+                    colors[i + 2] = 0.15 + normalizedHeight * 0.2; // B
+                }
+            }
+            
+            terrainGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            terrainGeometry.attributes.position.needsUpdate = true;
+            terrainGeometry.computeVertexNormals();
+
+            // Material do terreno
+            const terrainMaterial = new THREE.MeshPhongMaterial({
+                vertexColors: true,
+                shininess: 2,
+                specular: 0x222222,
+                transparent: false
+            });
+
+            terrain = new THREE.Mesh(terrainGeometry, terrainMaterial);
+            terrain.rotation.x = -Math.PI / 2;
+            terrain.receiveShadow = true;
+            terrain.castShadow = false;
+            scene.add(terrain);
+
+            // Adicionar pedras espalhadas
+            for (let i = 0; i < 80; i++) {
+                const rockGeometry = new THREE.DodecahedronGeometry(Math.random() * 3 + 0.8);
+                const rockMaterial = new THREE.MeshPhongMaterial({
+                    color: new THREE.Color().setHSL(Math.random() * 0.08, 0.3, 0.25 + Math.random() * 0.25)
+                });
+                const rock = new THREE.Mesh(rockGeometry, rockMaterial);
+                rock.position.set(
+                    (Math.random() - 0.5) * 280,
+                    Math.random() * 4,
+                    (Math.random() - 0.5) * 280
+                );
+                rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+                rock.scale.set(Math.random() + 0.5, Math.random() + 0.5, Math.random() + 0.5);
+                rock.castShadow = true;
+                rock.receiveShadow = true;
+                scene.add(rock);
+            }
+        }
+
+        function createWaterBodies() {
+            // Criar rio serpenteante principal
+            const riverPoints = [];
+            for (let i = 0; i < 20; i++) {
+                const t = i / 19;
+                const x = (t - 0.5) * 280;
+                const z = Math.sin(x * 0.02) * 50;
+                riverPoints.push(new THREE.Vector3(x, -1.5, z));
+            }
+
+            const riverCurve = new THREE.CatmullRomCurve3(riverPoints);
+            const riverGeometry = new THREE.TubeGeometry(riverCurve, 100, 8, 8, false);
+            const riverMaterial = new THREE.MeshPhongMaterial({
+                color: 0x2E86AB,
+                transparent: true,
+                opacity: 0.8,
+                shininess: 100,
+                specular: 0x87CEEB
+            });
+            const river = new THREE.Mesh(riverGeometry, riverMaterial);
+            rivers.push(river);
+            scene.add(river);
+
+            // Criar segundo rio
+            const river2Points = [];
+            for (let i = 0; i < 15; i++) {
+                const t = i / 14;
+                const z = (t - 0.5) * 250;
+                const x = Math.cos(z * 0.015) * 60;
+                river2Points.push(new THREE.Vector3(x, -1.2, z));
+            }
+
+            const river2Curve = new THREE.CatmullRomCurve3(river2Points);
+            const river2Geometry = new THREE.TubeGeometry(river2Curve, 80, 6, 8, false);
+            const river2 = new THREE.Mesh(river2Geometry, riverMaterial);
+            rivers.push(river2);
+            scene.add(river2);
+
+            // Criar lagos
+            for (let i = 0; i < 3; i++) {
+                const lakeGeometry = new THREE.CircleGeometry(15 + Math.random() * 10, 32);
+                const lakeMaterial = new THREE.MeshPhongMaterial({
+                    color: 0x1B4F72,
+                    transparent: true,
+                    opacity: 0.85,
+                    shininess: 120,
+                    specular: 0x87CEEB
+                });
+                const lake = new THREE.Mesh(lakeGeometry, lakeMaterial);
+                lake.rotation.x = -Math.PI / 2;
+                lake.position.set(
+                    (Math.random() - 0.5) * 200,
+                    -0.8,
+                    (Math.random() - 0.5) * 200
+                );
+                lakes.push(lake);
+                scene.add(lake);
+            }
+
+            // Adicionar reflexos na água
+            rivers.concat(lakes).forEach(water => {
+                water.receiveShadow = true;
+            });
+        }
+
+        function createMountains() {
+            // Criar cordilheira ao fundo
+            for (let i = 0; i < 12; i++) {
+                const mountainHeight = 40 + Math.random() * 60;
+                const mountainGeometry = new THREE.ConeGeometry(
+                    15 + Math.random() * 20, 
+                    mountainHeight, 
+                    8
+                );
+                const mountainMaterial = new THREE.MeshPhongMaterial({
+                    color: new THREE.Color().setHSL(0.15, 0.3, 0.4 + Math.random() * 0.2)
+                });
+                const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
+                
+                // Posicionar montanhas em volta do terreno
+                const angle = (i / 12) * Math.PI * 2;
+                const distance = 200 + Math.random() * 100;
+                mountain.position.set(
+                    Math.cos(angle) * distance,
+                    mountainHeight / 2,
+                    Math.sin(angle) * distance
+                );
+                
+                mountain.rotation.y = Math.random() * Math.PI;
+                mountain.castShadow = true;
+                mountain.receiveShadow = true;
+                mountains.push(mountain);
+                scene.add(mountain);
+
+                // Adicionar neve no topo
+                if (mountainHeight > 60) {
+                    const snowGeometry = new THREE.ConeGeometry(8, mountainHeight * 0.3, 6);
+                    const snowMaterial = new THREE.MeshPhongMaterial({
+                        color: 0xffffff,
+                        shininess: 50
+                    });
+                    const snow = new THREE.Mesh(snowGeometry, snowMaterial);
+                    snow.position.copy(mountain.position);
+                    snow.position.y += mountainHeight * 0.35;
+                    scene.add(snow);
+                }
+            }
+
+            // Criar colinas menores
+            for (let i = 0; i < 8; i++) {
+                const hillGeometry = new THREE.SphereGeometry(20 + Math.random() * 15, 8, 6);
+                const hillMaterial = new THREE.MeshPhongMaterial({
+                    color: new THREE.Color().setHSL(0.25, 0.4, 0.35 + Math.random() * 0.2)
+                });
+                const hill = new THREE.Mesh(hillGeometry, hillMaterial);
+                hill.position.set(
+                    (Math.random() - 0.5) * 400,
+                    10,
+                    (Math.random() - 0.5) * 400
+                );
+                hill.scale.y = 0.6;
+                hill.castShadow = true;
+                hill.receiveShadow = true;
+                scene.add(hill);
+            }
+        }
+
+        function createForests() {
+            // Criar florestas densas
+            for (let forestIndex = 0; forestIndex < 5; forestIndex++) {
+                const forestCenter = new THREE.Vector3(
+                    (Math.random() - 0.5) * 250,
+                    0,
+                    (Math.random() - 0.5) * 250
+                );
+                
+                const forestSize = 30 + Math.random() * 40;
+                const treeCount = Math.floor(forestSize / 2);
+                
+                for (let i = 0; i < treeCount; i++) {
+                    const treeGroup = new THREE.Group();
+                    
+                    // Tronco
+                    const trunkHeight = 4 + Math.random() * 6;
+                    const trunkGeometry = new THREE.CylinderGeometry(
+                        0.3 + Math.random() * 0.4, 
+                        0.4 + Math.random() * 0.3, 
+                        trunkHeight
+                    );
+                    const trunkMaterial = new THREE.MeshPhongMaterial({ 
+                        color: new THREE.Color().setHSL(0.08, 0.6, 0.2 + Math.random() * 0.1)
+                    });
+                    const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+                    trunk.position.y = trunkHeight / 2;
+                    trunk.castShadow = true;
+                    treeGroup.add(trunk);
+                    
+                    // Copa com múltiplas camadas
+                    const foliageLayers = 2 + Math.floor(Math.random() * 2);
+                    for (let layer = 0; layer < foliageLayers; layer++) {
+                        const foliageRadius = 2 + Math.random() * 2 - layer * 0.5;
+                        const foliageGeometry = new THREE.SphereGeometry(foliageRadius, 8, 6);
+                        const foliageMaterial = new THREE.MeshPhongMaterial({ 
+                            color: new THREE.Color().setHSL(0.3, 0.6, 0.25 + Math.random() * 0.15)
+                        });
+                        const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
+                        foliage.position.y = trunkHeight + layer * 2 + foliageRadius;
+                        foliage.castShadow = true;
+                        foliage.receiveShadow = true;
+                        treeGroup.add(foliage);
+                    }
+                    
+                    // Posicionar dentro da floresta
+                    const angle = Math.random() * Math.PI * 2;
+                    const distance = Math.random() * forestSize;
+                    treeGroup.position.copy(forestCenter);
+                    treeGroup.position.x += Math.cos(angle) * distance;
+                    treeGroup.position.z += Math.sin(angle) * distance;
+                    
+                    treeGroup.rotation.y = Math.random() * Math.PI * 2;
+                    forests.push(treeGroup);
+                    scene.add(treeGroup);
+                }
+            }
+
+            // Adicionar árvores isoladas
+            for (let i = 0; i < 25; i++) {
+                const treeGroup = new THREE.Group();
+                
+                const trunkHeight = 5 + Math.random() * 4;
+                const trunkGeometry = new THREE.CylinderGeometry(0.3, 0.5, trunkHeight);
+                const trunkMaterial = new THREE.MeshPhongMaterial({ color: 0x654321 });
+                const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+                trunk.position.y = trunkHeight / 2;
+                trunk.castShadow = true;
+                treeGroup.add(trunk);
+                
+                const foliageGeometry = new THREE.SphereGeometry(3 + Math.random() * 2, 8, 6);
+                const foliageMaterial = new THREE.MeshPhongMaterial({ color: 0x228B22 });
+                const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
+                foliage.position.y = trunkHeight + 2;
+                foliage.castShadow = true;
+                foliage.receiveShadow = true;
+                treeGroup.add(foliage);
+                
+                treeGroup.position.set(
+                    (Math.random() - 0.5) * 280,
+                    0,
+                    (Math.random() - 0.5) * 280
+                );
+                scene.add(treeGroup);
+            }
+        }
+
+        function createDrone() {
+            drone = new THREE.Group();
+
+            // Corpo principal do drone - mais detalhado
+            const bodyGeometry = new THREE.BoxGeometry(4, 1.2, 4);
+            const bodyMaterial = new THREE.MeshPhysicalMaterial({ 
+                color: 0x2c3e50,
+                metalness: 0.8,
+                roughness: 0.2,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.1
+            });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.castShadow = true;
+            body.receiveShadow = true;
+            drone.add(body);
+
+            // Detalhes do corpo
+            const topPlateGeometry = new THREE.BoxGeometry(3.8, 0.1, 3.8);
+            const topPlateMaterial = new THREE.MeshPhysicalMaterial({
+                color: 0x1a252f,
+                metalness: 0.9,
+                roughness: 0.1
+            });
+            const topPlate = new THREE.Mesh(topPlateGeometry, topPlateMaterial);
+            topPlate.position.y = 0.65;
+            topPlate.castShadow = true;
+            drone.add(topPlate);
+
+            // Bateria
+            const batteryGeometry = new THREE.BoxGeometry(2.5, 0.4, 1);
+            const batteryMaterial = new THREE.MeshPhongMaterial({ color: 0x27ae60 });
+            const battery = new THREE.Mesh(batteryGeometry, batteryMaterial);
+            battery.position.y = 0.8;
+            battery.castShadow = true;
+            drone.add(battery);
+
+            // Antenas
+            for (let i = 0; i < 2; i++) {
+                const antennaGeometry = new THREE.CylinderGeometry(0.02, 0.02, 1.5);
+                const antennaMaterial = new THREE.MeshPhongMaterial({ color: 0x000000 });
+                const antenna = new THREE.Mesh(antennaGeometry, antennaMaterial);
+                antenna.position.set(i === 0 ? -1.5 : 1.5, 1.5, -1.5);
+                antenna.castShadow = true;
+                drone.add(antenna);
+            }
+
+            // Braços do drone (4 braços)
+            const armPositions = [
+                { x: 3, z: 3, rotation: Math.PI / 4 },
+                { x: -3, z: 3, rotation: -Math.PI / 4 },
+                { x: 3, z: -3, rotation: -Math.PI / 4 },
+                { x: -3, z: -3, rotation: Math.PI / 4 }
+            ];
+
+            propellers = [];
+
+            armPositions.forEach((pos, index) => {
+                // Braço principal
+                const armGeometry = new THREE.BoxGeometry(4, 0.3, 0.8);
+                const armMaterial = new THREE.MeshPhysicalMaterial({
+                    color: 0x34495e,
+                    metalness: 0.6,
+                    roughness: 0.3
+                });
+                const arm = new THREE.Mesh(armGeometry, armMaterial);
+                arm.position.set(pos.x * 0.7, 0, pos.z * 0.7);
+                arm.rotation.y = pos.rotation;
+                arm.castShadow = true;
+                drone.add(arm);
+
+                // Motor
+                const motorGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.6);
+                const motorMaterial = new THREE.MeshPhysicalMaterial({
+                    color: 0x2c3e50,
+                    metalness: 0.9,
+                    roughness: 0.1
+                });
+                const motor = new THREE.Mesh(motorGeometry, motorMaterial);
+                motor.position.set(pos.x, 0.3, pos.z);
+                motor.castShadow = true;
+                drone.add(motor);
+
+                // Hélice com blur effect
+                const propellerGroup = new THREE.Group();
+                
+                // Hélice base
+                const propellerGeometry = new THREE.BoxGeometry(0.1, 0.05, 3.5);
+                const propellerMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0x95a5a6,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                
+                for (let j = 0; j < 2; j++) {
+                    const blade = new THREE.Mesh(propellerGeometry, propellerMaterial);
+                    blade.rotation.y = (j * Math.PI) / 2;
+                    propellerGroup.add(blade);
+                }
+
+                // Efeito de blur quando em movimento
+                const blurGeometry = new THREE.RingGeometry(0.5, 1.8, 32);
+                const blurMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x95a5a6,
+                    transparent: true,
+                    opacity: 0,
+                    side: THREE.DoubleSide
+                });
+                const blurEffect = new THREE.Mesh(blurGeometry, blurMaterial);
+                blurEffect.rotation.x = -Math.PI / 2;
+                propellerGroup.add(blurEffect);
+
+                propellerGroup.position.set(pos.x, 0.7, pos.z);
+                propellerGroup.userData = { 
+                    rotationSpeed: Math.random() * 0.3 + 0.8,
+                    blurEffect: blurEffect,
+                    direction: index % 2 === 0 ? 1 : -1
+                };
+                
+                propellers.push(propellerGroup);
+                drone.add(propellerGroup);
+            });
+
+            // Sistema de câmera gimbal
+            const gimbalGroup = new THREE.Group();
+            
+            // Base do gimbal
+            const gimbalBaseGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.2);
+            const gimbalBaseMaterial = new THREE.MeshPhongMaterial({ color: 0x2c3e50 });
+            const gimbalBase = new THREE.Mesh(gimbalBaseGeometry, gimbalBaseMaterial);
+            gimbalGroup.add(gimbalBase);
+
+            // Câmera
+            const cameraGeometry = new THREE.BoxGeometry(0.8, 0.5, 0.6);
+            const cameraMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x000000,
+                emissive: 0x001100 
+            });
+            const camera = new THREE.Mesh(cameraGeometry, cameraMaterial);
+            camera.position.y = -0.4;
+            camera.castShadow = true;
+            gimbalGroup.add(camera);
+
+            // Lente da câmera
+            const lensGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.2);
+            const lensMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x000000,
+                emissive: 0x004400 
+            });
+            const lens = new THREE.Mesh(lensGeometry, lensMaterial);
+            lens.rotation.x = Math.PI / 2;
+            lens.position.set(0, -0.4, 0.4);
+            gimbalGroup.add(lens);
+
+            gimbalGroup.position.y = -0.8;
+            gimbalGroup.userData = { oscillation: 0 };
+            drone.add(gimbalGroup);
+
+            // LEDs indicadores mais realistas
+            const ledGeometry = new THREE.SphereGeometry(0.08);
+            const ledColors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00];
+            
+            for (let i = 0; i < 4; i++) {
+                const ledMaterial = new THREE.MeshBasicMaterial({ 
+                    color: ledColors[i],
+                    emissive: ledColors[i],
+                    emissiveIntensity: 0.5
+                });
+                const led = new THREE.Mesh(ledGeometry, ledMaterial);
+                const angle = (i / 4) * Math.PI * 2;
+                led.position.set(Math.cos(angle) * 1.8, 0.3, Math.sin(angle) * 1.8);
+                led.userData = { originalEmissive: ledColors[i], blinkTimer: Math.random() * Math.PI * 2 };
+                drone.add(led);
+            }
+
+            drone.position.set(0, 25, 0);
+            drone.castShadow = true;
+            scene.add(drone);
+        }
+
+        function createScanSystem() {
+            // Feixe de luz laser sempre direcionado para baixo
+            const beamGeometry = new THREE.CylinderGeometry(0.05, 1.2, 20);
+            const beamMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00ff88,
+                transparent: true,
+                opacity: 0.7,
+                emissive: 0x003300
+            });
+            scanBeam = new THREE.Mesh(beamGeometry, beamMaterial);
+            scanBeam.position.set(0, -10, 0);
+            scanBeam.rotation.x = 0; // Sempre vertical
+            drone.add(scanBeam);
+
+            // Luz do scanner sempre para baixo
+            scanLight = new THREE.SpotLight(0x00ff88, 3, 40, Math.PI / 8, 0.3);
+            scanLight.position.set(0, -1, 0);
+            scanLight.target.position.set(0, -25, 0);
+            scanLight.castShadow = true;
+            scanLight.shadow.mapSize.width = 1024;
+            scanLight.shadow.mapSize.height = 1024;
+            
+            // Fixar o target da luz para sempre apontar para baixo
+            const lightTarget = new THREE.Object3D();
+            lightTarget.position.set(0, -25, 0);
+            drone.add(lightTarget);
+            scanLight.target = lightTarget;
+            
+            drone.add(scanLight);
+
+            // Partículas de escaneamento
+            createScanParticles();
+        }
+
+        function createScanParticles() {
+            const particleCount = 50;
+            const particleGeometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+
+            for (let i = 0; i < particleCount; i++) {
+                positions[i * 3] = (Math.random() - 0.5) * 2;
+                positions[i * 3 + 1] = Math.random() * -15;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 2;
+
+                colors[i * 3] = 0;
+                colors[i * 3 + 1] = 1;
+                colors[i * 3 + 2] = 0.5;
+            }
+
+            particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const particleMaterial = new THREE.PointsMaterial({
+                size: 0.3,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending
+            });
+
+            const particles = new THREE.Points(particleGeometry, particleMaterial);
+            drone.add(particles);
+            scanParticles.push(particles);
+        }
+
+        function createIndigenousVillage() {
+            // Escolher local próximo ao rio para a aldeia
+            const villageCenter = new THREE.Vector3(-50, 0, 30);
+            
+            // Criar círculo de ocas ao redor do centro
+            const houseCount = 8;
+            const villageRadius = 25;
+            
+            for (let i = 0; i < houseCount; i++) {
+                const angle = (i / houseCount) * Math.PI * 2;
+                const housePosition = new THREE.Vector3(
+                    villageCenter.x + Math.cos(angle) * villageRadius,
+                    villageCenter.y,
+                    villageCenter.z + Math.sin(angle) * villageRadius
+                );
+                
+                createOca(housePosition, angle + Math.PI); // Virada para o centro
+                village.push(housePosition);
+            }
+            
+            // Criar fogueira central
+            createCentralFireplace(villageCenter);
+            
+            // Criar totems espirituais
+            for (let i = 0; i < 4; i++) {
+                const totemAngle = (i / 4) * Math.PI * 2 + Math.PI / 4;
+                const totemPos = new THREE.Vector3(
+                    villageCenter.x + Math.cos(totemAngle) * (villageRadius + 15),
+                    villageCenter.y,
+                    villageCenter.z + Math.sin(totemAngle) * (villageRadius + 15)
+                );
+                createTotem(totemPos);
+            }
+            
+            // Criar canoas perto do rio
+            createCanoes();
+            
+            // Criar caminhos entre as casas
+            createVillagePaths(villageCenter, villageRadius);
+            
+            // Adicionar horta comunitária
+            createCommunityGarden(new THREE.Vector3(villageCenter.x + 35, 0, villageCenter.z));
+        }
+
+        function createOca(position, rotation) {
+            const houseGroup = new THREE.Group();
+            
+            // Base da oca (formato circular)
+            const baseGeometry = new THREE.CylinderGeometry(6, 6, 4, 12);
+            const baseMaterial = new THREE.MeshPhongMaterial({ 
+                color: new THREE.Color().setHSL(0.08, 0.7, 0.35)
+            });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            base.position.y = 2;
+            base.castShadow = true;
+            base.receiveShadow = true;
+            houseGroup.add(base);
+            
+            // Telhado cônico
+            const roofGeometry = new THREE.ConeGeometry(7, 6, 12);
+            const roofMaterial = new THREE.MeshPhongMaterial({ 
+                color: new THREE.Color().setHSL(0.12, 0.6, 0.25)
+            });
+            const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+            roof.position.y = 7;
+            roof.castShadow = true;
+            houseGroup.add(roof);
+            
+            // Entrada
+            const doorGeometry = new THREE.BoxGeometry(1.5, 2.5, 0.2);
+            const doorMaterial = new THREE.MeshPhongMaterial({ color: 0x4A4A4A });
+            const door = new THREE.Mesh(doorGeometry, doorMaterial);
+            door.position.set(0, 1.2, 5.9);
+            door.castShadow = true;
+            houseGroup.add(door);
+            
+            // Janela pequena
+            const windowGeometry = new THREE.RingGeometry(0.3, 0.5, 8);
+            const windowMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x000000,
+                side: THREE.DoubleSide 
+            });
+            const window = new THREE.Mesh(windowGeometry, windowMaterial);
+            window.position.set(3, 3, 4.5);
+            window.rotation.y = -Math.PI / 3;
+            houseGroup.add(window);
+            
+            houseGroup.position.copy(position);
+            houseGroup.rotation.y = rotation;
+            scene.add(houseGroup);
+        }
+
+        function createCentralFireplace(center) {
+            // Círculo de pedras
+            const stoneCount = 12;
+            const fireRadius = 4;
+            
+            for (let i = 0; i < stoneCount; i++) {
+                const angle = (i / stoneCount) * Math.PI * 2;
+                const stoneGeometry = new THREE.DodecahedronGeometry(0.8);
+                const stoneMaterial = new THREE.MeshPhongMaterial({ 
+                    color: new THREE.Color().setHSL(0, 0, 0.3 + Math.random() * 0.2)
+                });
+                const stone = new THREE.Mesh(stoneGeometry, stoneMaterial);
+                stone.position.set(
+                    center.x + Math.cos(angle) * fireRadius,
+                    0.4,
+                    center.z + Math.sin(angle) * fireRadius
+                );
+                stone.castShadow = true;
+                stone.receiveShadow = true;
+                scene.add(stone);
+            }
+            
+            // Fogueira central com partículas de fogo
+            const fireGroup = new THREE.Group();
+            
+            // Madeira empilhada
+            for (let i = 0; i < 6; i++) {
+                const logGeometry = new THREE.CylinderGeometry(0.15, 0.15, 2);
+                const logMaterial = new THREE.MeshPhongMaterial({ color: 0x4A4A4A });
+                const log = new THREE.Mesh(logGeometry, logMaterial);
+                log.position.y = 0.5 + i * 0.2;
+                log.rotation.z = (i * Math.PI) / 3;
+                log.castShadow = true;
+                fireGroup.add(log);
+            }
+            
+            // Chamas simuladas
+            const flameGeometry = new THREE.ConeGeometry(1, 3, 6);
+            const flameMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xff4500,
+                transparent: true,
+                opacity: 0.7
+            });
+            const flame = new THREE.Mesh(flameGeometry, flameMaterial);
+            flame.position.y = 2.5;
+            flame.userData = { isFlame: true };
+            fireGroup.add(flame);
+            
+            // Luz da fogueira
+            const fireLight = new THREE.PointLight(0xff4500, 2, 50);
+            fireLight.position.y = 3;
+            fireLight.castShadow = true;
+            fireGroup.add(fireLight);
+            
+            fireGroup.position.copy(center);
+            scene.add(fireGroup);
+        }
+
+        function createTotem(position) {
+            const totemGroup = new THREE.Group();
+            
+            // Poste principal
+            const poleGeometry = new THREE.CylinderGeometry(0.3, 0.4, 8);
+            const poleMaterial = new THREE.MeshPhongMaterial({ 
+                color: new THREE.Color().setHSL(0.08, 0.8, 0.3)
+            });
+            const pole = new THREE.Mesh(poleGeometry, poleMaterial);
+            pole.position.y = 4;
+            pole.castShadow = true;
+            totemGroup.add(pole);
+            
+            // Cabeças do totem (3 níveis)
+            for (let i = 0; i < 3; i++) {
+                const headGeometry = new THREE.BoxGeometry(1.2, 1.5, 1);
+                const headMaterial = new THREE.MeshPhongMaterial({ 
+                    color: new THREE.Color().setHSL(0.05 + i * 0.1, 0.7, 0.4)
+                });
+                const head = new THREE.Mesh(headGeometry, headMaterial);
+                head.position.y = 2 + i * 2;
+                head.castShadow = true;
+                totemGroup.add(head);
+                
+                // Olhos
+                const eyeGeometry = new THREE.SphereGeometry(0.1);
+                const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+                
+                const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+                leftEye.position.set(-0.3, 2.2 + i * 2, 0.5);
+                totemGroup.add(leftEye);
+                
+                const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+                rightEye.position.set(0.3, 2.2 + i * 2, 0.5);
+                totemGroup.add(rightEye);
+            }
+            
+            totemGroup.position.copy(position);
+            totems.push(totemGroup);
+            scene.add(totemGroup);
+        }
+
+        function createCanoes() {
+            // Encontrar posição próxima ao rio
+            const canoePositions = [
+                new THREE.Vector3(-80, -0.5, 45),
+                new THREE.Vector3(-85, -0.5, 50),
+                new THREE.Vector3(-75, -0.5, 40)
+            ];
+            
+            canoePositions.forEach(pos => {
+                const canoeGroup = new THREE.Group();
+                
+                // Casco da canoa
+                const hullGeometry = new THREE.CylinderGeometry(0.8, 0.6, 8, 8);
+                const hullMaterial = new THREE.MeshPhongMaterial({ 
+                    color: new THREE.Color().setHSL(0.08, 0.6, 0.3)
+                });
+                const hull = new THREE.Mesh(hullGeometry, hullMaterial);
+                hull.rotation.z = Math.PI / 2;
+                hull.scale.y = 0.3;
+                hull.castShadow = true;
+                hull.receiveShadow = true;
+                canoeGroup.add(hull);
+                
+                // Remos
+                for (let i = 0; i < 2; i++) {
+                    const paddleGeometry = new THREE.CylinderGeometry(0.05, 0.05, 3);
+                    const paddleMaterial = new THREE.MeshPhongMaterial({ color: 0x654321 });
+                    const paddle = new THREE.Mesh(paddleGeometry, paddleMaterial);
+                    paddle.position.set(i === 0 ? -2 : 2, 0.3, 0);
+                    paddle.rotation.z = Math.PI / 2;
+                    canoeGroup.add(paddle);
+                    
+                    // Pá do remo
+                    const bladeGeometry = new THREE.BoxGeometry(0.8, 0.1, 0.3);
+                    const blade = new THREE.Mesh(bladeGeometry, paddleMaterial);
+                    blade.position.set(i === 0 ? -3.5 : 3.5, 0.3, 0);
+                    canoeGroup.add(blade);
+                }
+                
+                canoeGroup.position.copy(pos);
+                canoeGroup.rotation.y = Math.random() * Math.PI / 4;
+                canoes.push(canoeGroup);
+                scene.add(canoeGroup);
+            });
+        }
+
+        function createVillagePaths(center, radius) {
+            // Criar caminhos de terra entre as casas
+            for (let i = 0; i < 8; i++) {
+                const pathGeometry = new THREE.PlaneGeometry(2, radius + 10);
+                const pathMaterial = new THREE.MeshPhongMaterial({ 
+                    color: new THREE.Color().setHSL(0.08, 0.3, 0.25),
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const path = new THREE.Mesh(pathGeometry, pathMaterial);
+                path.rotation.x = -Math.PI / 2;
+                path.rotation.z = (i / 8) * Math.PI * 2;
+                path.position.copy(center);
+                path.position.y = 0.05;
+                path.receiveShadow = true;
+                scene.add(path);
+            }
+        }
+
+        function createCommunityGarden(position) {
+            // Horta retangular
+            const gardenGeometry = new THREE.PlaneGeometry(15, 10);
+            const gardenMaterial = new THREE.MeshPhongMaterial({ 
+                color: new THREE.Color().setHSL(0.25, 0.6, 0.2)
+            });
+            const garden = new THREE.Mesh(gardenGeometry, gardenMaterial);
+            garden.rotation.x = -Math.PI / 2;
+            garden.position.copy(position);
+            garden.receiveShadow = true;
+            scene.add(garden);
+            
+            // Plantas da horta
+            for (let i = 0; i < 20; i++) {
+                const plantGeometry = new THREE.SphereGeometry(0.3, 6, 4);
+                const plantMaterial = new THREE.MeshPhongMaterial({ 
+                    color: new THREE.Color().setHSL(0.3, 0.8, 0.3 + Math.random() * 0.2)
+                });
+                const plant = new THREE.Mesh(plantGeometry, plantMaterial);
+                plant.position.set(
+                    position.x + (Math.random() - 0.5) * 12,
+                    0.3,
+                    position.z + (Math.random() - 0.5) * 8
+                );
+                plant.castShadow = true;
+                scene.add(plant);
+            }
+        }
+
+        function addEnvironmentalElements() {
+            // Adicionar vida selvagem (pássaros voando)
+            for (let i = 0; i < 8; i++) {
+                const birdGeometry = new THREE.SphereGeometry(0.3, 6, 4);
+                const birdMaterial = new THREE.MeshPhongMaterial({ 
+                    color: new THREE.Color().setHSL(Math.random() * 0.1, 0.5, 0.3)
+                });
+                const bird = new THREE.Mesh(birdGeometry, birdMaterial);
+                bird.position.set(
+                    (Math.random() - 0.5) * 200,
+                    20 + Math.random() * 30,
+                    (Math.random() - 0.5) * 200
+                );
+                bird.userData = { 
+                    speed: 0.5 + Math.random() * 0.3,
+                    angle: Math.random() * Math.PI * 2,
+                    height: bird.position.y
+                };
+                scene.add(bird);
+            }
+        }
+
+        function addLights() {
+            // Luz ambiente mais suave
+            const ambientLight = new THREE.AmbientLight(0x87CEEB, 0.4);
+            scene.add(ambientLight);
+
+            // Luz direcional principal (sol)
+            const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            sunLight.position.set(100, 120, 50);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 4096;
+            sunLight.shadow.mapSize.height = 4096;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 300;
+            sunLight.shadow.camera.left = -100;
+            sunLight.shadow.camera.right = 100;
+            sunLight.shadow.camera.top = 100;
+            sunLight.shadow.camera.bottom = -100;
+            sunLight.shadow.bias = -0.0001;
+            scene.add(sunLight);
+
+            // Luz hemisférica para simular reflexo do céu
+            const hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x8B7355, 0.3);
+            hemiLight.position.set(0, 50, 0);
+            scene.add(hemiLight);
+
+            // Luz de preenchimento
+            const fillLight = new THREE.DirectionalLight(0x87CEEB, 0.3);
+            fillLight.position.set(-50, 30, -50);
+            scene.add(fillLight);
+        }
+
+        function setupCameraControls() {
+            let mouseDown = false;
+            let mouseX = 0, mouseY = 0;
+            let cameraDistance = 80;
+            let cameraAngleX = 0.5;
+            let cameraAngleY = 0;
+
+            renderer.domElement.addEventListener('mousedown', (event) => {
+                mouseDown = true;
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+            });
+
+            renderer.domElement.addEventListener('mouseup', () => {
+                mouseDown = false;
+            });
+
+            renderer.domElement.addEventListener('mousemove', (event) => {
+                if (!mouseDown) return;
+
+                const deltaX = event.clientX - mouseX;
+                const deltaY = event.clientY - mouseY;
+
+                cameraAngleY -= deltaX * 0.01;
+                cameraAngleX -= deltaY * 0.01;
+                cameraAngleX = Math.max(-Math.PI/2, Math.min(Math.PI/2, cameraAngleX));
+
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+
+                updateCameraPosition();
+            });
+
+            renderer.domElement.addEventListener('wheel', (event) => {
+                cameraDistance += event.deltaY * 0.1;
+                cameraDistance = Math.max(20, Math.min(150, cameraDistance));
+                updateCameraPosition();
+            });
+
+            function updateCameraPosition() {
+                camera.position.x = Math.cos(cameraAngleY) * Math.cos(cameraAngleX) * cameraDistance;
+                camera.position.y = Math.sin(cameraAngleX) * cameraDistance;
+                camera.position.z = Math.sin(cameraAngleY) * Math.cos(cameraAngleX) * cameraDistance;
+                camera.lookAt(0, 5, 0);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (animationRunning) {
+                updateDrone();
+                updateScanSystem();
+                updateEnvironment();
+                updateUI();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function updateDrone() {
+            const time = Date.now() * 0.001;
+            
+            // Simular vento mais suave
+            windEffect.x = Math.sin(time * 0.3) * 0.008;
+            windEffect.z = Math.cos(time * 0.2) * 0.008;
+            windEffect.y = Math.sin(time * 0.5) * 0.004;
+
+            // Movimento baseado no modo de escaneamento com física mais realista
+            let targetX = 0, targetZ = 0;
+            
+            switch(scanMode) {
+                case 1: // Circular
+                    droneAngle += 0.008;
+                    targetX = Math.cos(droneAngle) * scanRadius;
+                    targetZ = Math.sin(droneAngle) * scanRadius;
+                    break;
+                
+                case 2: // Espiral
+                    droneAngle += 0.01;
+                    scanRadius = 20 + Math.sin(droneAngle * 0.3) * 25;
+                    targetX = Math.cos(droneAngle) * scanRadius;
+                    targetZ = Math.sin(droneAngle) * scanRadius;
+                    break;
+                
+                case 3: // Grid
+                    droneAngle += 0.009;
+                    const gridSize = 30;
+                    targetX = Math.sin(droneAngle) * gridSize;
+                    targetZ = Math.cos(droneAngle * 0.6) * gridSize;
+                    break;
+            }
+
+            // Aplicar física simples (inércia) com movimento mais lento
+            droneAcceleration.x = (targetX - drone.position.x) * 0.012 + windEffect.x;
+            droneAcceleration.z = (targetZ - drone.position.z) * 0.012 + windEffect.z;
+            
+            droneVelocity.x += droneAcceleration.x;
+            droneVelocity.z += droneAcceleration.z;
+            droneVelocity.y += windEffect.y;
+
+            // Amortecimento maior para movimento mais suave
+            droneVelocity.x *= 0.88;
+            droneVelocity.z *= 0.88;
+            droneVelocity.y *= 0.92;
+
+            // Atualizar posição
+            drone.position.x += droneVelocity.x;
+            drone.position.z += droneVelocity.z;
+            drone.position.y = 25 + Math.sin(time * 2) * 0.8 + droneVelocity.y;
+
+            // Inclinação baseada na velocidade (mais realística)
+            const speed = Math.sqrt(droneVelocity.x * droneVelocity.x + droneVelocity.z * droneVelocity.z);
+            drone.rotation.x = -droneVelocity.z * 5 + windEffect.x * 2;
+            drone.rotation.z = droneVelocity.x * 5 + windEffect.z * 2;
+            
+            // Rotação para seguir direção do movimento
+            const targetRotation = Math.atan2(droneVelocity.x, droneVelocity.z);
+            drone.rotation.y += (targetRotation - drone.rotation.y) * 0.08;
+
+            // Atualizar hélices com efeito de blur
+            propellers.forEach((propeller, index) => {
+                const rotationSpeed = propeller.userData.rotationSpeed;
+                const direction = propeller.userData.direction;
+                
+                propeller.rotation.y += rotationSpeed * direction;
+                
+                // Efeito de blur baseado na velocidade
+                const blurOpacity = Math.min(speed * 50, 0.6);
+                propeller.userData.blurEffect.material.opacity = blurOpacity;
+                
+                // Simular vibração dos motores
+                propeller.position.y = 0.7 + Math.sin(time * 30 + index) * 0.005;
+            });
+
+            // Atualizar LEDs piscantes
+            drone.children.forEach(child => {
+                if (child.userData && child.userData.blinkTimer !== undefined) {
+                    child.userData.blinkTimer += 0.1;
+                    const intensity = 0.3 + Math.sin(child.userData.blinkTimer) * 0.7;
+                    child.material.emissiveIntensity = intensity;
+                }
+            });
+
+            // Manter gimbal da câmera sempre apontando para baixo
+            const gimbalGroup = drone.children.find(child => child.userData && child.userData.oscillation !== undefined);
+            if (gimbalGroup) {
+                gimbalGroup.userData.oscillation += 0.02;
+                // Pequenas oscilações naturais mas sempre apontando para baixo
+                gimbalGroup.rotation.x = Math.sin(gimbalGroup.userData.oscillation) * 0.03;
+                gimbalGroup.rotation.y = Math.cos(gimbalGroup.userData.oscillation * 0.5) * 0.02;
+                gimbalGroup.rotation.z = 0; // Sem rotação no eixo Z
+            }
+
+            // Manter o feixe sempre vertical
+            if (scanBeam) {
+                scanBeam.rotation.x = 0;
+                scanBeam.rotation.y = 0;
+                scanBeam.rotation.z = 0;
+            }
+        }
+
+        function updateScanSystem() {
+            const time = Date.now() * 0.001;
+            
+            // Pulsar o feixe de escaneamento mais realisticamente
+            const pulseIntensity = 0.5 + Math.sin(time * 8) * 0.4;
+            scanBeam.material.opacity = pulseIntensity;
+            scanLight.intensity = 2 + pulseIntensity * 1.5;
+
+            // Atualizar partículas de escaneamento com movimento mais natural
+            scanParticles.forEach(particles => {
+                const positions = particles.geometry.attributes.position.array;
+                const colors = particles.geometry.attributes.color.array;
+                
+                for (let i = 0; i < positions.length; i += 3) {
+                    // Movimento das partículas
+                    positions[i + 1] -= 0.3 + Math.random() * 0.2;
+                    positions[i] += (Math.random() - 0.5) * 0.1;
+                    positions[i + 2] += (Math.random() - 0.5) * 0.1;
+                    
+                    // Reset quando chegam ao chão
+                    if (positions[i + 1] < -20) {
+                        positions[i + 1] = 0;
+                        positions[i] = (Math.random() - 0.5) * 3;
+                        positions[i + 2] = (Math.random() - 0.5) * 3;
+                        scanPoints++;
+                        
+                        // Criar efeito de impacto no terreno
+                        createScanImpact(
+                            drone.position.x + positions[i],
+                            drone.position.z + positions[i + 2]
+                        );
+                    }
+                    
+                    // Variar cores das partículas
+                    const intensity = 0.5 + Math.sin(time * 5 + i) * 0.5;
+                    colors[i] = 0;
+                    colors[i + 1] = intensity;
+                    colors[i + 2] = intensity * 0.5;
+                }
+                
+                particles.geometry.attributes.position.needsUpdate = true;
+                particles.geometry.attributes.color.needsUpdate = true;
+            });
+
+            // Adicionar pontos de escaneamento visíveis no terreno
+            if (Math.random() < 0.1 && scanPoints % 10 === 0) {
+                createScanPoint(drone.position.x, drone.position.z);
+            }
+        }
+
+        function createScanImpact(x, z) {
+            // Criar pequeno flash de luz no ponto de impacto
+            const impactGeometry = new THREE.RingGeometry(0.1, 0.5, 8);
+            const impactMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ff88,
+                transparent: true,
+                opacity: 1,
+                side: THREE.DoubleSide
+            });
+            const impact = new THREE.Mesh(impactGeometry, impactMaterial);
+            impact.position.set(x, 0.1, z);
+            impact.rotation.x = -Math.PI / 2;
+            scene.add(impact);
+
+            // Animar o fade out
+            const fadeAnimation = () => {
+                impact.material.opacity -= 0.05;
+                if (impact.material.opacity <= 0) {
+                    scene.remove(impact);
+                } else {
+                    requestAnimationFrame(fadeAnimation);
+                }
+            };
+            fadeAnimation();
+        }
+
+        function createScanPoint(x, z) {
+            // Criar ponto de dados escaneados
+            const pointGeometry = new THREE.SphereGeometry(0.2);
+            const pointMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ff88,
+                emissive: 0x003300,
+                transparent: true,
+                opacity: 0.8
+            });
+            const scanPoint = new THREE.Mesh(pointGeometry, pointMaterial);
+            scanPoint.position.set(
+                x + (Math.random() - 0.5) * 10,
+                0.2,
+                z + (Math.random() - 0.5) * 10
+            );
+            scene.add(scanPoint);
+
+            // Remover após alguns segundos
+            setTimeout(() => {
+                if (scene.children.includes(scanPoint)) {
+                    scene.remove(scanPoint);
+                }
+            }, 5000);
+        }
+
+        function updateUI() {
+            document.getElementById('altitude').textContent = drone.position.y.toFixed(1) + 'm';
+            
+            // Calcular velocidade real baseada na velocidade do drone
+            const realSpeed = Math.sqrt(droneVelocity.x * droneVelocity.x + droneVelocity.z * droneVelocity.z) * 100;
+            document.getElementById('speed').textContent = Math.max(0.1, realSpeed).toFixed(1) + ' m/s';
+            
+            document.getElementById('battery').textContent = Math.max(20, 100 - Math.floor(scanPoints / 100)).toString() + '%';
+            document.getElementById('scanPoints').textContent = scanPoints.toString();
+        }
+
+        // Funções de controle
+        function toggleAnimation() {
+            animationRunning = !animationRunning;
+        }
+
+        function updateEnvironment() {
+            const time = Date.now() * 0.001;
+            
+            // Animar água (ondulações)
+            rivers.concat(lakes).forEach((water, index) => {
+                if (water.material) {
+                    water.material.opacity = 0.8 + Math.sin(time * 2 + index) * 0.1;
+                }
+            });
+
+            // Animar pássaros
+            scene.children.forEach(child => {
+                if (child.userData && child.userData.speed) {
+                    child.userData.angle += child.userData.speed * 0.02;
+                    child.position.x += Math.cos(child.userData.angle) * child.userData.speed;
+                    child.position.z += Math.sin(child.userData.angle) * child.userData.speed;
+                    child.position.y = child.userData.height + Math.sin(time + child.userData.angle) * 2;
+                    
+                    // Resetar posição se muito longe
+                    if (Math.abs(child.position.x) > 200 || Math.abs(child.position.z) > 200) {
+                        child.position.x = (Math.random() - 0.5) * 100;
+                        child.position.z = (Math.random() - 0.5) * 100;
+                    }
+                }
+            });
+
+            // Movimento sutil das árvores (vento)
+            forests.forEach(tree => {
+                if (tree.children.length > 1) {
+                    tree.children.forEach((part, index) => {
+                        if (index > 0) { // Não mover o tronco
+                            part.rotation.x = Math.sin(time + tree.position.x * 0.1) * 0.05;
+                            part.rotation.z = Math.cos(time + tree.position.z * 0.1) * 0.03;
+                        }
+                    });
+                }
+            });
+
+            // Animar chamas da fogueira da aldeia
+            scene.children.forEach(child => {
+                if (child.userData && child.userData.isFlame) {
+                    child.scale.x = 1 + Math.sin(time * 8) * 0.3;
+                    child.scale.z = 1 + Math.cos(time * 6) * 0.3;
+                    child.scale.y = 1 + Math.sin(time * 10) * 0.2;
+                }
+            });
+        }
+
+        function resetDrone() {
+            droneAngle = 0;
+            scanRadius = 30;
+            scanPoints = 0;
+            drone.position.set(0, 25, 0);
+            droneVelocity = { x: 0, y: 0, z: 0 };
+            droneAcceleration = { x: 0, y: 0, z: 0 };
+            drone.rotation.set(0, 0, 0);
+        }
+
+        function changeScanMode() {
+            scanMode = scanMode >= 3 ? 1 : scanMode + 1;
+            const modes = ['', 'Circular', 'Espiral', 'Grid'];
+            console.log('Modo de escaneamento:', modes[scanMode]);
+        }
+
+        // Responsividade
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Inicializar quando a página carregar
+        init();
+    </script>
+</body>
+</html> 
