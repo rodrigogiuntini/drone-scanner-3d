@@ -173,7 +173,6 @@
         let weatherSystem, atmosphericParticles, cloudSystem;
         let audioContext, droneSound, windSound;
         let composer, renderTarget;
-        let textureLibrary = {};
 
         // Inicializar a cena
         function init() {
@@ -207,9 +206,6 @@
 
             // Adicionar névoa atmosférica realista
             scene.fog = new THREE.FogExp2(0x87CEEB, 0.0008);
-
-            // Criar biblioteca de texturas
-            createTextureLibrary();
 
             // Configurar pós-processamento
             setupPostProcessing();
@@ -277,278 +273,6 @@
             camera.lookAt(0, 0, 0);
             
             animate();
-        }
-
-        function createTextureLibrary() {
-            // Criar texturas procedurais ultra-realistas
-            const textureGenerator = new THREE.DataTexture(null, 256, 256, THREE.RGBAFormat);
-            
-            // Textura de grama
-            textureLibrary.grass = createGrassTexture();
-            
-            // Textura de terra
-            textureLibrary.dirt = createDirtTexture();
-            
-            // Textura de pedra
-            textureLibrary.stone = createStoneTexture();
-            
-            // Textura de neve
-            textureLibrary.snow = createSnowTexture();
-            
-            // Textura de água
-            textureLibrary.water = createWaterTexture();
-            
-            // Textura de madeira
-            textureLibrary.wood = createWoodTexture();
-            
-            // Textura de folhas
-            textureLibrary.leaves = createLeavesTexture();
-            
-            // Textura de metal
-            textureLibrary.metal = createMetalTexture();
-            
-            // Textura de couro/palha
-            textureLibrary.thatch = createThatchTexture();
-            
-            console.log('Biblioteca de texturas criada com', Object.keys(textureLibrary).length, 'texturas');
-        }
-
-        function createGrassTexture() {
-            const size = 256;
-            const data = new Uint8Array(size * size * 4);
-            
-            for (let i = 0; i < size; i++) {
-                for (let j = 0; j < size; j++) {
-                    const index = (i * size + j) * 4;
-                    
-                    // Base verde com variações
-                    const noise = Math.random() * 0.3;
-                    const grassBase = 0.2 + noise;
-                    
-                    data[index] = Math.floor(grassBase * 100 * (0.8 + Math.random() * 0.4));     // R
-                    data[index + 1] = Math.floor(grassBase * 255 * (0.9 + Math.random() * 0.2)); // G
-                    data[index + 2] = Math.floor(grassBase * 80 * (0.7 + Math.random() * 0.6));  // B
-                    data[index + 3] = 255; // A
-                }
-            }
-            
-            const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(8, 8);
-            texture.needsUpdate = true;
-            return texture;
-        }
-
-        function createDirtTexture() {
-            const size = 256;
-            const data = new Uint8Array(size * size * 4);
-            
-            for (let i = 0; i < size; i++) {
-                for (let j = 0; j < size; j++) {
-                    const index = (i * size + j) * 4;
-                    
-                    const noise = Math.random() * 0.4 + 0.3;
-                    const brown = 0.4 * noise;
-                    
-                    data[index] = Math.floor(139 * brown * (0.8 + Math.random() * 0.4));     // R
-                    data[index + 1] = Math.floor(69 * brown * (0.9 + Math.random() * 0.2));  // G
-                    data[index + 2] = Math.floor(19 * brown * (0.7 + Math.random() * 0.6));  // B
-                    data[index + 3] = 255; // A
-                }
-            }
-            
-            const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(6, 6);
-            texture.needsUpdate = true;
-            return texture;
-        }
-
-        function createStoneTexture() {
-            const size = 256;
-            const data = new Uint8Array(size * size * 4);
-            
-            for (let i = 0; i < size; i++) {
-                for (let j = 0; j < size; j++) {
-                    const index = (i * size + j) * 4;
-                    
-                    const noise = Math.random() * 0.5 + 0.4;
-                    const gray = 0.6 * noise;
-                    
-                    data[index] = Math.floor(128 * gray * (0.8 + Math.random() * 0.4));     // R
-                    data[index + 1] = Math.floor(128 * gray * (0.9 + Math.random() * 0.2)); // G
-                    data[index + 2] = Math.floor(128 * gray * (0.85 + Math.random() * 0.3)); // B
-                    data[index + 3] = 255; // A
-                }
-            }
-            
-            const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(4, 4);
-            texture.needsUpdate = true;
-            return texture;
-        }
-
-        function createSnowTexture() {
-            const size = 256;
-            const data = new Uint8Array(size * size * 4);
-            
-            for (let i = 0; i < size; i++) {
-                for (let j = 0; j < size; j++) {
-                    const index = (i * size + j) * 4;
-                    
-                    const noise = Math.random() * 0.2 + 0.9;
-                    
-                    data[index] = Math.floor(255 * noise);     // R
-                    data[index + 1] = Math.floor(255 * noise); // G
-                    data[index + 2] = Math.floor(255 * noise * 1.1); // B (ligeiramente azulado)
-                    data[index + 3] = 255; // A
-                }
-            }
-            
-            const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(2, 2);
-            texture.needsUpdate = true;
-            return texture;
-        }
-
-        function createWaterTexture() {
-            const size = 256;
-            const data = new Uint8Array(size * size * 4);
-            
-            for (let i = 0; i < size; i++) {
-                for (let j = 0; j < size; j++) {
-                    const index = (i * size + j) * 4;
-                    
-                    const wave = Math.sin(i * 0.1) * Math.cos(j * 0.1) * 0.1 + 0.9;
-                    
-                    data[index] = Math.floor(30 * wave);      // R
-                    data[index + 1] = Math.floor(100 * wave); // G
-                    data[index + 2] = Math.floor(200 * wave); // B
-                    data[index + 3] = 200; // A (semi-transparente)
-                }
-            }
-            
-            const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(4, 4);
-            texture.needsUpdate = true;
-            return texture;
-        }
-
-        function createWoodTexture() {
-            const size = 256;
-            const data = new Uint8Array(size * size * 4);
-            
-            for (let i = 0; i < size; i++) {
-                for (let j = 0; j < size; j++) {
-                    const index = (i * size + j) * 4;
-                    
-                    // Criar anéis de madeira
-                    const ring = Math.sin(j * 0.3) * 0.2 + 0.8;
-                    const noise = Math.random() * 0.3 + 0.7;
-                    const wood = ring * noise;
-                    
-                    data[index] = Math.floor(101 * wood * (0.8 + Math.random() * 0.4));     // R
-                    data[index + 1] = Math.floor(67 * wood * (0.9 + Math.random() * 0.2));  // G
-                    data[index + 2] = Math.floor(33 * wood * (0.7 + Math.random() * 0.6));  // B
-                    data[index + 3] = 255; // A
-                }
-            }
-            
-            const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(2, 2);
-            texture.needsUpdate = true;
-            return texture;
-        }
-
-        function createLeavesTexture() {
-            const size = 256;
-            const data = new Uint8Array(size * size * 4);
-            
-            for (let i = 0; i < size; i++) {
-                for (let j = 0; j < size; j++) {
-                    const index = (i * size + j) * 4;
-                    
-                    const noise = Math.random() * 0.4 + 0.6;
-                    const leafPattern = Math.sin(i * 0.2) * Math.cos(j * 0.2) * 0.2 + 0.8;
-                    const leaf = noise * leafPattern;
-                    
-                    data[index] = Math.floor(34 * leaf * (0.8 + Math.random() * 0.4));      // R
-                    data[index + 1] = Math.floor(139 * leaf * (0.9 + Math.random() * 0.2)); // G
-                    data[index + 2] = Math.floor(34 * leaf * (0.7 + Math.random() * 0.6));  // B
-                    data[index + 3] = Math.floor(200 + Math.random() * 55); // A (variação de transparência)
-                }
-            }
-            
-            const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(3, 3);
-            texture.needsUpdate = true;
-            return texture;
-        }
-
-        function createMetalTexture() {
-            const size = 256;
-            const data = new Uint8Array(size * size * 4);
-            
-            for (let i = 0; i < size; i++) {
-                for (let j = 0; j < size; j++) {
-                    const index = (i * size + j) * 4;
-                    
-                    const brushed = Math.sin(i * 0.5) * 0.1 + 0.9;
-                    const reflection = Math.random() * 0.3 + 0.7;
-                    const metal = brushed * reflection;
-                    
-                    data[index] = Math.floor(150 * metal);     // R
-                    data[index + 1] = Math.floor(150 * metal); // G
-                    data[index + 2] = Math.floor(150 * metal); // B
-                    data[index + 3] = 255; // A
-                }
-            }
-            
-            const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(1, 1);
-            texture.needsUpdate = true;
-            return texture;
-        }
-
-        function createThatchTexture() {
-            const size = 256;
-            const data = new Uint8Array(size * size * 4);
-            
-            for (let i = 0; i < size; i++) {
-                for (let j = 0; j < size; j++) {
-                    const index = (i * size + j) * 4;
-                    
-                    const straw = Math.sin(i * 0.8) * Math.cos(j * 0.3) * 0.3 + 0.7;
-                    const noise = Math.random() * 0.4 + 0.6;
-                    const thatch = straw * noise;
-                    
-                    data[index] = Math.floor(139 * thatch * (0.8 + Math.random() * 0.4));     // R
-                    data[index + 1] = Math.floor(115 * thatch * (0.9 + Math.random() * 0.2)); // G
-                    data[index + 2] = Math.floor(85 * thatch * (0.7 + Math.random() * 0.6));  // B
-                    data[index + 3] = 255; // A
-                }
-            }
-            
-            const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(6, 6);
-            texture.needsUpdate = true;
-            return texture;
         }
 
         function setupPostProcessing() {
@@ -717,59 +441,12 @@
             terrainGeometry.attributes.position.needsUpdate = true;
             terrainGeometry.computeVertexNormals();
 
-            // Material do terreno com texturas realistas
-            const terrainMaterial = new THREE.ShaderMaterial({
-                uniforms: {
-                    grassTexture: { value: textureLibrary.grass },
-                    dirtTexture: { value: textureLibrary.dirt },
-                    stoneTexture: { value: textureLibrary.stone },
-                    time: { value: 0 }
-                },
-                vertexShader: `
-                    attribute vec3 color;
-                    varying vec3 vColor;
-                    varying vec2 vUv;
-                    varying vec3 vWorldPosition;
-                    
-                    void main() {
-                        vColor = color;
-                        vUv = uv;
-                        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                        vWorldPosition = worldPosition.xyz;
-                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                    }
-                `,
-                fragmentShader: `
-                    uniform sampler2D grassTexture;
-                    uniform sampler2D dirtTexture;
-                    uniform sampler2D stoneTexture;
-                    uniform float time;
-                    varying vec3 vColor;
-                    varying vec2 vUv;
-                    varying vec3 vWorldPosition;
-                    
-                    void main() {
-                        // Criar coordenadas UV baseadas na posição mundial
-                        vec2 worldUV = vWorldPosition.xz * 0.05;
-                        
-                        vec3 grass = texture2D(grassTexture, worldUV).rgb;
-                        vec3 dirt = texture2D(dirtTexture, worldUV * 0.8).rgb;
-                        vec3 stone = texture2D(stoneTexture, worldUV * 0.6).rgb;
-                        
-                        // Mistura baseada na altura (usando vColor como proxy)
-                        float heightFactor = (vColor.r + vColor.g + vColor.b) / 3.0;
-                        
-                        vec3 finalColor = grass;
-                        finalColor = mix(finalColor, dirt, smoothstep(0.2, 0.4, heightFactor));
-                        finalColor = mix(finalColor, stone, smoothstep(0.4, 0.7, heightFactor));
-                        
-                        // Modular com cores originais para variação
-                        finalColor *= vColor * 2.0;
-                        
-                        gl_FragColor = vec4(finalColor, 1.0);
-                    }
-                `,
-                lights: true
+            // Material do terreno
+            const terrainMaterial = new THREE.MeshPhongMaterial({
+                vertexColors: true,
+                shininess: 2,
+                specular: 0x222222,
+                transparent: false
             });
 
             terrain = new THREE.Mesh(terrainGeometry, terrainMaterial);
@@ -778,14 +455,11 @@
             terrain.castShadow = false;
             scene.add(terrain);
 
-            // Adicionar pedras espalhadas com texturas realistas
+            // Adicionar pedras espalhadas
             for (let i = 0; i < 80; i++) {
                 const rockGeometry = new THREE.DodecahedronGeometry(Math.random() * 3 + 0.8);
-                const rockMaterial = new THREE.MeshLambertMaterial({
-                    map: textureLibrary.stone,
-                    color: new THREE.Color().setHSL(Math.random() * 0.08, 0.4, 0.3 + Math.random() * 0.3),
-                    roughness: 0.8,
-                    metalness: 0.1
+                const rockMaterial = new THREE.MeshPhongMaterial({
+                    color: new THREE.Color().setHSL(Math.random() * 0.08, 0.3, 0.25 + Math.random() * 0.25)
                 });
                 const rock = new THREE.Mesh(rockGeometry, rockMaterial);
                 rock.position.set(
@@ -814,13 +488,11 @@
             const riverCurve = new THREE.CatmullRomCurve3(riverPoints);
             const riverGeometry = new THREE.TubeGeometry(riverCurve, 100, 8, 8, false);
             const riverMaterial = new THREE.MeshPhongMaterial({
-                map: textureLibrary.water,
                 color: 0x2E86AB,
                 transparent: true,
-                opacity: 0.7,
-                shininess: 200,
-                specular: 0x87CEEB,
-                normalScale: new THREE.Vector2(0.5, 0.5)
+                opacity: 0.8,
+                shininess: 100,
+                specular: 0x87CEEB
             });
             const river = new THREE.Mesh(riverGeometry, riverMaterial);
             rivers.push(river);
@@ -841,17 +513,15 @@
             rivers.push(river2);
             scene.add(river2);
 
-            // Criar lagos com texturas realistas
+            // Criar lagos
             for (let i = 0; i < 3; i++) {
                 const lakeGeometry = new THREE.CircleGeometry(15 + Math.random() * 10, 32);
                 const lakeMaterial = new THREE.MeshPhongMaterial({
-                    map: textureLibrary.water,
                     color: 0x1B4F72,
                     transparent: true,
-                    opacity: 0.75,
-                    shininess: 250,
-                    specular: 0x87CEEB,
-                    normalScale: new THREE.Vector2(0.3, 0.3)
+                    opacity: 0.85,
+                    shininess: 120,
+                    specular: 0x87CEEB
                 });
                 const lake = new THREE.Mesh(lakeGeometry, lakeMaterial);
                 lake.rotation.x = -Math.PI / 2;
@@ -879,9 +549,8 @@
                     mountainHeight, 
                     8
                 );
-                const mountainMaterial = new THREE.MeshLambertMaterial({
-                    map: textureLibrary.stone,
-                    color: new THREE.Color().setHSL(0.15, 0.4, 0.4 + Math.random() * 0.2)
+                const mountainMaterial = new THREE.MeshPhongMaterial({
+                    color: new THREE.Color().setHSL(0.15, 0.3, 0.4 + Math.random() * 0.2)
                 });
                 const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
                 
@@ -903,9 +572,9 @@
                 // Adicionar neve no topo
                 if (mountainHeight > 60) {
                     const snowGeometry = new THREE.ConeGeometry(8, mountainHeight * 0.3, 6);
-                    const snowMaterial = new THREE.MeshLambertMaterial({
-                        map: textureLibrary.snow,
-                        color: 0xffffff
+                    const snowMaterial = new THREE.MeshPhongMaterial({
+                        color: 0xffffff,
+                        shininess: 50
                     });
                     const snow = new THREE.Mesh(snowGeometry, snowMaterial);
                     snow.position.copy(mountain.position);
@@ -955,8 +624,7 @@
                         0.4 + Math.random() * 0.3, 
                         trunkHeight
                     );
-                    const trunkMaterial = new THREE.MeshLambertMaterial({ 
-                        map: textureLibrary.wood,
+                    const trunkMaterial = new THREE.MeshPhongMaterial({ 
                         color: new THREE.Color().setHSL(0.08, 0.6, 0.2 + Math.random() * 0.1)
                     });
                     const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
@@ -969,11 +637,8 @@
                     for (let layer = 0; layer < foliageLayers; layer++) {
                         const foliageRadius = 2 + Math.random() * 2 - layer * 0.5;
                         const foliageGeometry = new THREE.SphereGeometry(foliageRadius, 8, 6);
-                        const foliageMaterial = new THREE.MeshLambertMaterial({ 
-                            map: textureLibrary.leaves,
-                            color: new THREE.Color().setHSL(0.3, 0.6, 0.25 + Math.random() * 0.15),
-                            transparent: true,
-                            alphaTest: 0.5
+                        const foliageMaterial = new THREE.MeshPhongMaterial({ 
+                            color: new THREE.Color().setHSL(0.3, 0.6, 0.25 + Math.random() * 0.15)
                         });
                         const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
                         foliage.position.y = trunkHeight + layer * 2 + foliageRadius;
@@ -1001,22 +666,14 @@
                 
                 const trunkHeight = 5 + Math.random() * 4;
                 const trunkGeometry = new THREE.CylinderGeometry(0.3, 0.5, trunkHeight);
-                const trunkMaterial = new THREE.MeshLambertMaterial({ 
-                    map: textureLibrary.wood,
-                    color: 0x654321 
-                });
+                const trunkMaterial = new THREE.MeshPhongMaterial({ color: 0x654321 });
                 const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
                 trunk.position.y = trunkHeight / 2;
                 trunk.castShadow = true;
                 treeGroup.add(trunk);
                 
                 const foliageGeometry = new THREE.SphereGeometry(3 + Math.random() * 2, 8, 6);
-                const foliageMaterial = new THREE.MeshLambertMaterial({ 
-                    map: textureLibrary.leaves,
-                    color: 0x228B22,
-                    transparent: true,
-                    alphaTest: 0.5
-                });
+                const foliageMaterial = new THREE.MeshPhongMaterial({ color: 0x228B22 });
                 const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
                 foliage.position.y = trunkHeight + 2;
                 foliage.castShadow = true;
@@ -1037,9 +694,12 @@
 
             // Corpo principal do drone - mais detalhado
             const bodyGeometry = new THREE.BoxGeometry(4, 1.2, 4);
-            const bodyMaterial = new THREE.MeshLambertMaterial({ 
-                map: textureLibrary.metal,
-                color: 0x2c3e50
+            const bodyMaterial = new THREE.MeshPhysicalMaterial({ 
+                color: 0x2c3e50,
+                metalness: 0.8,
+                roughness: 0.2,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.1
             });
             const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
             body.castShadow = true;
@@ -1048,9 +708,10 @@
 
             // Detalhes do corpo
             const topPlateGeometry = new THREE.BoxGeometry(3.8, 0.1, 3.8);
-            const topPlateMaterial = new THREE.MeshLambertMaterial({
-                map: textureLibrary.metal,
-                color: 0x1a252f
+            const topPlateMaterial = new THREE.MeshPhysicalMaterial({
+                color: 0x1a252f,
+                metalness: 0.9,
+                roughness: 0.1
             });
             const topPlate = new THREE.Mesh(topPlateGeometry, topPlateMaterial);
             topPlate.position.y = 0.65;
@@ -1088,9 +749,10 @@
             armPositions.forEach((pos, index) => {
                 // Braço principal
                 const armGeometry = new THREE.BoxGeometry(4, 0.3, 0.8);
-                const armMaterial = new THREE.MeshLambertMaterial({
-                    map: textureLibrary.metal,
-                    color: 0x34495e
+                const armMaterial = new THREE.MeshPhysicalMaterial({
+                    color: 0x34495e,
+                    metalness: 0.6,
+                    roughness: 0.3
                 });
                 const arm = new THREE.Mesh(armGeometry, armMaterial);
                 arm.position.set(pos.x * 0.7, 0, pos.z * 0.7);
@@ -1100,9 +762,10 @@
 
                 // Motor
                 const motorGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.6);
-                const motorMaterial = new THREE.MeshLambertMaterial({
-                    map: textureLibrary.metal,
-                    color: 0x2c3e50
+                const motorMaterial = new THREE.MeshPhysicalMaterial({
+                    color: 0x2c3e50,
+                    metalness: 0.9,
+                    roughness: 0.1
                 });
                 const motor = new THREE.Mesh(motorGeometry, motorMaterial);
                 motor.position.set(pos.x, 0.3, pos.z);
@@ -1436,8 +1099,7 @@
             
             // Base da oca (formato circular)
             const baseGeometry = new THREE.CylinderGeometry(6, 6, 4, 12);
-            const baseMaterial = new THREE.MeshLambertMaterial({ 
-                map: textureLibrary.wood,
+            const baseMaterial = new THREE.MeshPhongMaterial({ 
                 color: new THREE.Color().setHSL(0.08, 0.7, 0.35)
             });
             const base = new THREE.Mesh(baseGeometry, baseMaterial);
@@ -1448,8 +1110,7 @@
             
             // Telhado cônico
             const roofGeometry = new THREE.ConeGeometry(7, 6, 12);
-            const roofMaterial = new THREE.MeshLambertMaterial({ 
-                map: textureLibrary.thatch,
+            const roofMaterial = new THREE.MeshPhongMaterial({ 
                 color: new THREE.Color().setHSL(0.12, 0.6, 0.25)
             });
             const roof = new THREE.Mesh(roofGeometry, roofMaterial);
@@ -1459,10 +1120,7 @@
             
             // Entrada
             const doorGeometry = new THREE.BoxGeometry(1.5, 2.5, 0.2);
-            const doorMaterial = new THREE.MeshLambertMaterial({ 
-                map: textureLibrary.wood,
-                color: 0x4A4A4A 
-            });
+            const doorMaterial = new THREE.MeshPhongMaterial({ color: 0x4A4A4A });
             const door = new THREE.Mesh(doorGeometry, doorMaterial);
             door.position.set(0, 1.2, 5.9);
             door.castShadow = true;
@@ -1492,8 +1150,7 @@
             for (let i = 0; i < stoneCount; i++) {
                 const angle = (i / stoneCount) * Math.PI * 2;
                 const stoneGeometry = new THREE.DodecahedronGeometry(0.8);
-                const stoneMaterial = new THREE.MeshLambertMaterial({ 
-                    map: textureLibrary.stone,
+                const stoneMaterial = new THREE.MeshPhongMaterial({ 
                     color: new THREE.Color().setHSL(0, 0, 0.3 + Math.random() * 0.2)
                 });
                 const stone = new THREE.Mesh(stoneGeometry, stoneMaterial);
@@ -1513,10 +1170,7 @@
             // Madeira empilhada
             for (let i = 0; i < 6; i++) {
                 const logGeometry = new THREE.CylinderGeometry(0.15, 0.15, 2);
-                const logMaterial = new THREE.MeshLambertMaterial({ 
-                    map: textureLibrary.wood,
-                    color: 0x4A4A4A 
-                });
+                const logMaterial = new THREE.MeshPhongMaterial({ color: 0x4A4A4A });
                 const log = new THREE.Mesh(logGeometry, logMaterial);
                 log.position.y = 0.5 + i * 0.2;
                 log.rotation.z = (i * Math.PI) / 3;
@@ -1551,8 +1205,7 @@
             
             // Poste principal
             const poleGeometry = new THREE.CylinderGeometry(0.3, 0.4, 8);
-            const poleMaterial = new THREE.MeshLambertMaterial({ 
-                map: textureLibrary.wood,
+            const poleMaterial = new THREE.MeshPhongMaterial({ 
                 color: new THREE.Color().setHSL(0.08, 0.8, 0.3)
             });
             const pole = new THREE.Mesh(poleGeometry, poleMaterial);
@@ -1563,8 +1216,7 @@
             // Cabeças do totem (3 níveis)
             for (let i = 0; i < 3; i++) {
                 const headGeometry = new THREE.BoxGeometry(1.2, 1.5, 1);
-                const headMaterial = new THREE.MeshLambertMaterial({ 
-                    map: textureLibrary.wood,
+                const headMaterial = new THREE.MeshPhongMaterial({ 
                     color: new THREE.Color().setHSL(0.05 + i * 0.1, 0.7, 0.4)
                 });
                 const head = new THREE.Mesh(headGeometry, headMaterial);
@@ -1603,8 +1255,7 @@
                 
                 // Casco da canoa
                 const hullGeometry = new THREE.CylinderGeometry(0.8, 0.6, 8, 8);
-                const hullMaterial = new THREE.MeshLambertMaterial({ 
-                    map: textureLibrary.wood,
+                const hullMaterial = new THREE.MeshPhongMaterial({ 
                     color: new THREE.Color().setHSL(0.08, 0.6, 0.3)
                 });
                 const hull = new THREE.Mesh(hullGeometry, hullMaterial);
@@ -1617,10 +1268,7 @@
                 // Remos
                 for (let i = 0; i < 2; i++) {
                     const paddleGeometry = new THREE.CylinderGeometry(0.05, 0.05, 3);
-                    const paddleMaterial = new THREE.MeshLambertMaterial({ 
-                        map: textureLibrary.wood,
-                        color: 0x654321 
-                    });
+                    const paddleMaterial = new THREE.MeshPhongMaterial({ color: 0x654321 });
                     const paddle = new THREE.Mesh(paddleGeometry, paddleMaterial);
                     paddle.position.set(i === 0 ? -2 : 2, 0.3, 0);
                     paddle.rotation.z = Math.PI / 2;
@@ -2292,31 +1940,6 @@
             animationRunning = !animationRunning;
         }
 
-        function updateAnimatedTextures(time) {
-            // Atualizar textura do terreno se usar shader
-            if (terrain && terrain.material.uniforms) {
-                terrain.material.uniforms.time.value = time;
-            }
-            
-            // Animar texturas de água
-            if (textureLibrary.water) {
-                textureLibrary.water.offset.x = Math.sin(time * 0.5) * 0.1;
-                textureLibrary.water.offset.y = Math.cos(time * 0.3) * 0.1;
-            }
-            
-            // Animar texturas de folhas (efeito de vento)
-            if (textureLibrary.leaves) {
-                textureLibrary.leaves.offset.x = Math.sin(time * 0.8) * 0.02;
-                textureLibrary.leaves.offset.y = Math.cos(time * 0.6) * 0.02;
-            }
-            
-            // Animar texturas de grama
-            if (textureLibrary.grass) {
-                textureLibrary.grass.offset.x = Math.sin(time * 0.2) * 0.005;
-                textureLibrary.grass.offset.y = Math.cos(time * 0.15) * 0.005;
-            }
-        }
-
         function updateEnvironment() {
             if (!scene) return;
             
@@ -2326,9 +1949,6 @@
             if (skybox && skybox.userData && skybox.userData.isSkybox && skybox.material.uniforms) {
                 skybox.material.uniforms.time.value = time;
             }
-            
-            // Atualizar texturas animadas
-            updateAnimatedTextures(time);
             
             // Animar nuvens volumétricas
             if (cloudSystem) {
